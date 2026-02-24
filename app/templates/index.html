@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wissellijst</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #121212; color: #e0e0e0;
+            max-width: 640px; margin: 0 auto; padding: 20px;
+        }
+        h1 { color: #1db954; margin-bottom: 24px; font-size: 1.6em; }
+        h2 { color: #b3b3b3; font-size: 1em; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+
+        .card {
+            background: #1e1e1e; border-radius: 8px; padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        label { display: block; color: #b3b3b3; font-size: 0.85em; margin-bottom: 4px; }
+        input, select, textarea {
+            width: 100%; padding: 10px 12px; border: 1px solid #333;
+            border-radius: 6px; background: #2a2a2a; color: #e0e0e0;
+            font-size: 0.95em; margin-bottom: 12px; font-family: inherit;
+        }
+        input:focus, select:focus, textarea:focus { border-color: #1db954; outline: none; }
+
+        .btn {
+            display: inline-block; padding: 10px 20px; border: none; border-radius: 6px;
+            font-size: 0.95em; cursor: pointer; font-weight: 600;
+        }
+        .btn-primary { background: #1db954; color: #000; }
+        .btn-primary:hover { background: #1ed760; }
+        .btn-primary:disabled { background: #535353; color: #888; cursor: not-allowed; }
+        .btn-secondary { background: #333; color: #e0e0e0; }
+        .btn-secondary:hover { background: #444; }
+        .btn-danger { background: #e74c3c; color: #fff; font-size: 0.8em; padding: 6px 12px; }
+        .btn-danger:hover { background: #c0392b; }
+
+        .btn-row { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+
+        .btn-back {
+            background: none; border: none; color: #1db954; cursor: pointer;
+            font-size: 0.95em; padding: 0; margin-bottom: 16px; font-weight: 600;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn-back:hover { color: #1ed760; }
+
+        .playlist-card {
+            display: flex; align-items: center; gap: 14px;
+            padding: 12px 14px; background: #2a2a2a; border-radius: 8px;
+            margin-bottom: 8px; cursor: pointer; transition: background 0.15s;
+        }
+        .playlist-card:hover { background: #333; }
+        .playlist-card-img {
+            width: 56px; height: 56px; border-radius: 6px;
+            object-fit: cover; background: #333; flex-shrink: 0;
+        }
+        .playlist-card-img-placeholder {
+            width: 56px; height: 56px; border-radius: 6px;
+            background: #333; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: #666; font-size: 1.4em;
+        }
+        .playlist-card-info { flex: 1; min-width: 0; }
+        .playlist-card-naam { font-weight: 600; font-size: 1em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .playlist-card-meta { color: #888; font-size: 0.8em; }
+
+        .categorie-row { display: flex; align-items: center; gap: 8px; }
+        .categorie-row input { margin-bottom: 0; flex: 1; }
+        .categorie-nr { color: #1db954; font-weight: 700; min-width: 24px; }
+
+        .progress-bar {
+            width: 100%; height: 6px; background: #333; border-radius: 3px;
+            margin: 12px 0; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; background: #1db954; border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        .status-tekst { color: #b3b3b3; font-size: 0.85em; margin-bottom: 8px; }
+        .hidden { display: none; }
+
+        .historie-lijst, .wachtrij-lijst {
+            max-height: 400px; overflow-y: auto; margin-top: 12px;
+        }
+        .historie-item, .wachtrij-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; background: #2a2a2a; border-radius: 4px;
+            margin-bottom: 4px; font-size: 0.85em;
+        }
+        .historie-item-artiest { color: #1db954; }
+        .historie-item-titel { color: #e0e0e0; }
+        .historie-item-cat { color: #888; font-size: 0.8em; }
+        .historie-count { color: #888; font-size: 0.85em; margin-top: 8px; }
+
+        .item-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .btn-icon {
+            background: none; border: none; color: #888; cursor: pointer;
+            font-size: 1em; padding: 4px 6px; border-radius: 4px;
+        }
+        .btn-icon:hover { background: #333; color: #e0e0e0; }
+        .btn-icon-danger:hover { color: #e74c3c; }
+
+        #melding {
+            padding: 12px; border-radius: 6px; margin-bottom: 16px;
+            font-size: 0.9em;
+        }
+        .melding-ok { background: #1a3a2a; color: #1db954; }
+        .melding-fout { background: #3a1a1a; color: #e74c3c; }
+
+        .detail-header {
+            display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+        }
+        .detail-header-img {
+            width: 80px; height: 80px; border-radius: 8px;
+            object-fit: cover; background: #333; flex-shrink: 0;
+        }
+        .detail-header-img-placeholder {
+            width: 80px; height: 80px; border-radius: 8px;
+            background: #333; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: #555; font-size: 2em;
+        }
+        .detail-header-info { flex: 1; }
+        .detail-header-naam { font-size: 1.3em; font-weight: 700; color: #fff; margin-bottom: 4px; }
+        .detail-header-playlist { color: #1db954; font-size: 0.9em; margin-bottom: 2px; }
+        .detail-header-meta { color: #888; font-size: 0.85em; }
+
+        .detail-cats {
+            display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .detail-cat-tag {
+            background: #1db954; color: #000; padding: 4px 10px;
+            border-radius: 12px; font-size: 0.8em; font-weight: 600;
+        }
+        .detail-cat-tag.discovery {
+            background: #e040fb; color: #000;
+        }
+
+        .tab-bar {
+            display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #333;
+        }
+        .tab-btn {
+            background: none; border: none; color: #888; cursor: pointer;
+            padding: 10px 16px; font-size: 0.9em; font-weight: 600;
+            border-bottom: 2px solid transparent; margin-bottom: -2px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .tab-btn:hover { color: #e0e0e0; }
+        .tab-btn.active { color: #1db954; border-bottom-color: #1db954; }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7); display: none;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal-content {
+            background: #1e1e1e; border-radius: 12px; padding: 24px;
+            width: 90%; max-width: 400px;
+        }
+        .modal-content h2 { margin-bottom: 16px; }
+
+        .schedule-info {
+            color: #888; font-size: 0.8em; padding: 6px 10px;
+            background: #2a2a2a; border-radius: 4px; margin-top: 4px;
+        }
+
+        /* Bron playlists checkbox list */
+        .bron-lijst {
+            max-height: 240px; overflow-y: auto; background: #2a2a2a;
+            border-radius: 6px; padding: 8px; margin-bottom: 12px;
+        }
+        .bron-item {
+            display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+            border-radius: 4px; cursor: pointer;
+        }
+        .bron-item:hover { background: #333; }
+        .bron-item input[type="checkbox"] {
+            width: auto; margin: 0; accent-color: #1db954;
+        }
+        .bron-item-naam { font-size: 0.9em; flex: 1; }
+        .bron-item-count { color: #888; font-size: 0.8em; }
+        .bron-count { color: #888; font-size: 0.8em; margin-bottom: 4px; }
+
+        .smaak-preview {
+            background: #2a2a2a; border-radius: 6px; padding: 12px;
+            font-size: 0.8em; color: #b3b3b3; white-space: pre-wrap;
+            max-height: 200px; overflow-y: auto; margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .type-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.7em; font-weight: 600; vertical-align: middle; margin-left: 6px;
+        }
+        .type-badge.discovery { background: #e040fb; color: #000; }
+        .type-badge.categorie { background: #1db954; color: #000; }
+    </style>
+</head>
+<body>
+    <h1 style="cursor:pointer;" onclick="naarOverzicht()">Wissellijst</h1>
+
+    <div id="melding" class="hidden"></div>
+
+    <!-- ============ VIEW: OVERZICHT ============ -->
+    <div id="view-overzicht">
+        <div class="card">
+            <h2>Mijn Wissellijsten</h2>
+            <div id="lijsten-container">
+                <p style="color:#888; font-size:0.9em;">Laden...</p>
+            </div>
+            <div class="btn-row" style="margin-top:12px;">
+                <button class="btn btn-secondary" onclick="nieuweLijst('categorie')">+ Categorie lijst</button>
+                <button class="btn btn-secondary" onclick="nieuweLijst('discovery')">+ Discovery lijst</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ VIEW: DETAIL ============ -->
+    <div id="view-detail" class="hidden">
+        <button class="btn-back" onclick="naarOverzicht()">&#8592; Terug naar overzicht</button>
+
+        <div class="card">
+            <div class="detail-header">
+                <div id="detail-img-container"></div>
+                <div class="detail-header-info">
+                    <div class="detail-header-naam" id="detail-naam"></div>
+                    <div class="detail-header-playlist" id="detail-playlist"></div>
+                    <div class="detail-header-meta" id="detail-meta"></div>
+                </div>
+            </div>
+            <div class="detail-cats" id="detail-cats"></div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" style="font-size:0.85em;padding:6px 14px;" onclick="bewerkLijst(activeLijstId)">Bewerken</button>
+                <button class="btn btn-danger" style="font-size:0.85em;padding:6px 14px;" onclick="herstartenLijst(activeLijstId)">Herstarten</button>
+                <button class="btn btn-danger" onclick="verwijderLijst(activeLijstId)">Verwijderen</button>
+            </div>
+        </div>
+
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="toonTab('acties')" id="tab-acties">Acties</button>
+            <button class="tab-btn" onclick="toonTab('wachtrij')" id="tab-wachtrij">Wachtrij</button>
+            <button class="tab-btn" onclick="toonTab('historie')" id="tab-historie">Historie</button>
+            <button class="tab-btn hidden" onclick="toonTab('smaakprofiel')" id="tab-smaakprofiel">Smaakprofiel</button>
+        </div>
+
+        <div id="tab-content-acties" class="card">
+            <h2>Acties</h2>
+            <div class="btn-row" style="margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-vullen" onclick="initieelVullen()">Initieel vullen</button>
+                <button class="btn btn-secondary" id="btn-roteren" onclick="roteren()">Roteren</button>
+            </div>
+            <p id="discovery-rotatie-info" class="status-tekst hidden"
+               style="color:#9b59b6; font-size:0.85em; margin-top:-8px;">
+                Bij discovery wordt eerst geanalyseerd, dan pas geroteerd.
+            </p>
+            <div id="voortgang-container" class="hidden">
+                <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                <p class="status-tekst" id="voortgang-tekst">Starten...</p>
+            </div>
+            <div id="schedule-status"></div>
+        </div>
+
+        <div id="tab-content-wachtrij" class="card hidden">
+            <h2>Volgend blokje</h2>
+            <p class="status-tekst" id="wachtrij-status"></p>
+            <div id="wachtrij-acties" class="hidden" style="margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-genereer-wachtrij" onclick="genereerWachtrij()">Wachtrij aanmaken</button>
+            </div>
+            <div id="wachtrij-voortgang" class="hidden">
+                <div class="progress-bar"><div class="progress-fill" id="wachtrij-progress-fill"></div></div>
+                <p class="status-tekst" id="wachtrij-voortgang-tekst">Genereren...</p>
+            </div>
+            <div class="wachtrij-lijst" id="wachtrij-lijst"></div>
+        </div>
+
+        <div id="tab-content-historie" class="card hidden">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0;">Historie</h2>
+                <button class="btn btn-danger" onclick="wisHistorie()">Wis historie</button>
+            </div>
+            <p class="historie-count" id="historie-count"></p>
+            <div class="historie-lijst" id="historie-lijst"></div>
+        </div>
+
+        <div id="tab-content-smaakprofiel" class="card hidden">
+            <h2>Smaakprofiel</h2>
+            <p class="status-tekst" style="margin-bottom:12px;">
+                Je smaakprofiel wordt gebruikt om nieuwe muziek te scoren.
+                Haal het op van Spotify of voeg zelf artiesten/nummers toe.
+            </p>
+            <div class="btn-row" style="margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-ophalen-profiel"
+                        onclick="ophalenSpotifyProfiel()">Ophalen van Spotify</button>
+                <button class="btn btn-secondary" id="btn-opslaan-profiel"
+                        onclick="opslaanProfiel()">Opslaan</button>
+            </div>
+            <div id="profiel-ophalen-status" class="hidden">
+                <p class="status-tekst" id="profiel-status-tekst">Ophalen...</p>
+            </div>
+
+            <div style="margin-top:8px;">
+                <label>Spotify profiel + eigen toevoegingen:</label>
+                <textarea id="smaakprofiel-tekst" rows="20"
+                          style="width:100%; font-family:monospace; font-size:0.85em;
+                                 background:#1e1e1e; color:#e0e0e0; border:1px solid #444;
+                                 border-radius:8px; padding:12px; resize:vertical;"
+                          placeholder="Klik 'Ophalen van Spotify' om je profiel te laden..."></textarea>
+                <p class="status-tekst" style="font-size:0.8em; color:#888; margin-top:4px;">
+                    Tip: voeg onder "=== EIGEN TOEVOEGINGEN ===" je favoriete artiesten of nummers toe.
+                    Deze blijven bewaard als je opnieuw van Spotify ophaalt.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ VIEW: EDITOR ============ -->
+    <div id="view-editor" class="hidden">
+        <button class="btn-back" onclick="annuleren()">&#8592; Annuleren</button>
+
+        <div class="card">
+            <h2 id="editor-titel">Nieuwe Wissellijst</h2>
+
+            <input type="hidden" id="editor-type" value="categorie">
+
+            <label for="naam">Naam</label>
+            <input type="text" id="naam" placeholder="Bijv. Muziek door de decennia">
+
+            <label for="playlist-select">Doelplaylist (hier komen de nummers in)</label>
+            <select id="playlist-select" onchange="onPlaylistSelectChange()">
+                <option value="">Laden...</option>
+            </select>
+
+            <!-- CATEGORIE velden -->
+            <div id="editor-categorie-velden">
+                <label>Categorie\u00ebn (min. 2, max. 10)</label>
+                <div id="categorieen-container"></div>
+                <div class="btn-row" style="margin-top:8px;">
+                    <button class="btn btn-secondary" onclick="categorieToevoegen()" style="font-size:0.85em; padding:6px 14px;">+ Categorie</button>
+                    <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
+                </div>
+            </div>
+
+            <!-- DISCOVERY velden -->
+            <div id="editor-discovery-velden" class="hidden">
+                <label>Bronlijsten (vink de playlists aan om te scannen)</label>
+                <p class="bron-count" id="bron-count">0 geselecteerd</p>
+                <div class="bron-lijst" id="bron-playlists-lijst"></div>
+
+                <div style="margin-top:8px; margin-bottom:12px;">
+                    <label style="font-size:0.85em; color:#888;">Playlist niet in de lijst? Plak een Spotify URL of ID:</label>
+                    <div class="btn-row" style="gap:4px;">
+                        <input type="text" id="bron-handmatig" placeholder="https://open.spotify.com/playlist/... of playlist ID"
+                               style="flex:1; font-size:0.85em; padding:6px 10px;">
+                        <button class="btn btn-secondary" onclick="voegBronToe()" style="font-size:0.85em; padding:6px 14px;">+ Toevoegen</button>
+                    </div>
+                </div>
+
+                <label for="blok-grootte">Tracks per blok</label>
+                <input type="number" id="blok-grootte" min="1" max="50" value="10" placeholder="10">
+
+                <label>Smaakprofiel</label>
+                <p class="status-tekst" style="font-size:0.8em; color:#888; margin-bottom:4px;">
+                    Na het aanmaken kun je je smaakprofiel bewerken via het Smaakprofiel tabblad.
+                </p>
+                <div class="btn-row" style="margin-bottom:8px;">
+                    <button class="btn btn-secondary" style="font-size:0.85em; padding:6px 14px;" id="btn-smaakprofiel" onclick="haalSmaakprofielOp()">Ophalen van Spotify</button>
+                </div>
+                <div class="smaak-preview" id="smaak-preview">Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.</div>
+                <input type="hidden" id="smaakprofiel-data" value="">
+            </div>
+
+            <label for="aantal-blokken" style="margin-top:12px;">Aantal blokken</label>
+            <input type="number" id="aantal-blokken" min="1" max="50" value="10" placeholder="10">
+
+            <label for="max-per-artiest" style="margin-top:12px;">Max liedjes per artiest (0 = onbeperkt)</label>
+            <input type="number" id="max-per-artiest" min="0" max="99" value="0" placeholder="0 = onbeperkt">
+
+            <label style="margin-top:12px;">Automatische rotatie</label>
+            <select id="rotatie-schema" onchange="onRotatieSchemaChange()">
+                <option value="uit">Uit</option>
+                <option value="elk_uur">Elk uur</option>
+                <option value="elke_3_uur">Elke 3 uur</option>
+                <option value="dagelijks">Dagelijks</option>
+                <option value="wekelijks">Wekelijks</option>
+            </select>
+
+            <div id="rotatie-opties" class="hidden">
+                <label for="rotatie-tijdstip">Tijdstip</label>
+                <input type="time" id="rotatie-tijdstip" value="08:00">
+
+                <div id="rotatie-dag-container" class="hidden">
+                    <label for="rotatie-dag">Dag</label>
+                    <select id="rotatie-dag">
+                        <option value="0">Maandag</option>
+                        <option value="1">Dinsdag</option>
+                        <option value="2">Woensdag</option>
+                        <option value="3">Donderdag</option>
+                        <option value="4">Vrijdag</option>
+                        <option value="5">Zaterdag</option>
+                        <option value="6">Zondag</option>
+                    </select>
+                </div>
+            </div>
+
+            <label style="margin-top:12px;">
+                <input type="checkbox" id="mail-na-rotatie" onchange="onMailToggle()"> E-mail notificatie na rotatie
+            </label>
+            <div id="mail-opties" class="hidden">
+                <label for="mail-adres">E-mailadres</label>
+                <input type="email" id="mail-adres" placeholder="naam@voorbeeld.nl">
+            </div>
+
+            <div class="btn-row" style="margin-top:16px;">
+                <button class="btn btn-primary" onclick="opslaan()">Opslaan</button>
+                <button class="btn btn-secondary" onclick="annuleren()">Annuleren</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL: Nieuwe Spotify Playlist ============ -->
+    <div id="nieuwe-playlist-modal" class="modal-overlay" onclick="sluitNieuwePlaylistModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Nieuwe Spotify Playlist</h2>
+            <label for="nieuwe-playlist-naam">Naam</label>
+            <input type="text" id="nieuwe-playlist-naam" placeholder="Bijv. Mijn wissellijst">
+            <div class="btn-row">
+                <button class="btn btn-primary" onclick="maakNieuwePlaylist()">Aanmaken</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('nieuwe-playlist-modal').classList.remove('visible')">Annuleren</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL: Track vervangen ============ -->
+    <div id="vervang-modal" class="modal-overlay" onclick="sluitVervangModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Track vervangen</h2>
+            <p style="color:#888; font-size:0.85em; margin-bottom:12px;">
+                Categorie: <span id="vervang-categorie" style="color:#1db954;"></span>
+            </p>
+            <label for="vervang-artiest">Artiest</label>
+            <input type="text" id="vervang-artiest" placeholder="Bijv. Queen">
+            <label for="vervang-titel">Titel</label>
+            <input type="text" id="vervang-titel" placeholder="Bijv. Bohemian Rhapsody">
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btn-vervang" onclick="zoekEnVervang()">Zoeken & vervangen</button>
+                <button class="btn btn-secondary" onclick="sluitVervangModal()">Annuleren</button>
+            </div>
+            <p id="vervang-status" class="status-tekst hidden" style="margin-top:8px;"></p>
+        </div>
+    </div>
+
+    <script>
+        let playlists = [];
+        let wissellijsten = [];
+        let activeLijstId = null;
+        let editLijstId = null;
+        let previousView = 'overzicht';
+        let vervangIndex = null;
+
+        // --- Init ---
+        async function init() {
+            await Promise.all([laadPlaylists(), laadWissellijsten()]);
+        }
+
+        // --- Navigation ---
+        function toonView(viewNaam) {
+            document.getElementById('view-overzicht').classList.add('hidden');
+            document.getElementById('view-detail').classList.add('hidden');
+            document.getElementById('view-editor').classList.add('hidden');
+            document.getElementById('view-' + viewNaam).classList.remove('hidden');
+        }
+
+        function naarOverzicht() {
+            activeLijstId = null;
+            toonView('overzicht');
+        }
+
+        function naarDetail(id) {
+            activeLijstId = id;
+            previousView = 'overzicht';
+            toonView('detail');
+            vulDetailPagina();
+            toonTab('acties');
+        }
+
+        // --- Tabs ---
+        function toonTab(tabNaam) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + tabNaam).classList.add('active');
+
+            document.getElementById('tab-content-acties').classList.add('hidden');
+            document.getElementById('tab-content-wachtrij').classList.add('hidden');
+            document.getElementById('tab-content-historie').classList.add('hidden');
+            document.getElementById('tab-content-smaakprofiel').classList.add('hidden');
+            document.getElementById('tab-content-' + tabNaam).classList.remove('hidden');
+
+            if (tabNaam === 'historie') laadHistorie();
+            if (tabNaam === 'wachtrij') laadWachtrij();
+            if (tabNaam === 'smaakprofiel') laadSmaakprofiel();
+        }
+
+        // --- API calls ---
+        async function laadPlaylists() {
+            try {
+                const res = await fetch('/api/playlists');
+                if (res.status === 401) {
+                    // Token verlopen of scope gewijzigd - redirect naar login
+                    window.location.href = '/login';
+                    return;
+                }
+                const data = await res.json();
+                if (data.error === 'auth_required') {
+                    window.location.href = '/login';
+                    return;
+                }
+                playlists = data;
+                vulPlaylistSelect();
+            } catch (e) {
+                toonMelding('Kan Spotify playlists niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        async function laadWissellijsten() {
+            try {
+                const res = await fetch('/api/wissellijsten');
+                wissellijsten = await res.json();
+                toonLijsten();
+            } catch (e) {
+                toonMelding('Kan wissellijsten niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        // --- Playlists dropdown ---
+        function vulPlaylistSelect() {
+            const sel = document.getElementById('playlist-select');
+            sel.innerHTML = '<option value="">-- Kies een playlist --</option>';
+            playlists.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.naam} (${p.tracks} nummers)`;
+                sel.appendChild(opt);
+            });
+            const nieuwOpt = document.createElement('option');
+            nieuwOpt.value = '__nieuw__';
+            nieuwOpt.textContent = '+ Nieuwe playlist aanmaken...';
+            sel.appendChild(nieuwOpt);
+        }
+
+        function onPlaylistSelectChange() {
+            const sel = document.getElementById('playlist-select');
+            if (sel.value === '__nieuw__') {
+                sel.value = '';
+                toonNieuwePlaylistModal();
+            }
+        }
+
+        // --- Bron playlists (discovery) ---
+        function vulBronPlaylists(geselecteerd = []) {
+            const container = document.getElementById('bron-playlists-lijst');
+            // Toon alle playlists uit de library
+            const playlistIds = new Set(playlists.map(p => p.id));
+            let html = playlists.map(p => {
+                const checked = geselecteerd.includes(p.id) ? 'checked' : '';
+                return `
+                    <label class="bron-item">
+                        <input type="checkbox" class="bron-checkbox" value="${p.id}" ${checked} onchange="updateBronCount()">
+                        <span class="bron-item-naam">${p.naam}</span>
+                        <span class="bron-item-count">${p.tracks}</span>
+                    </label>
+                `;
+            }).join('');
+
+            // Voeg geselecteerde toe die niet in de library staan (handmatig toegevoegd)
+            const missing = geselecteerd.filter(id => !playlistIds.has(id));
+            for (const id of missing) {
+                html = `
+                    <label class="bron-item">
+                        <input type="checkbox" class="bron-checkbox" value="${id}" checked onchange="updateBronCount()">
+                        <span class="bron-item-naam">${id} (extern)</span>
+                        <span class="bron-item-count">?</span>
+                    </label>
+                ` + html;
+                // Laad naam async
+                fetch(`/api/playlists/${id}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.naam) {
+                            const cb = container.querySelector(`.bron-checkbox[value="${id}"]`);
+                            if (cb) {
+                                cb.closest('.bron-item').querySelector('.bron-item-naam').textContent = data.naam;
+                                cb.closest('.bron-item').querySelector('.bron-item-count').textContent = data.tracks || '?';
+                            }
+                        }
+                    })
+                    .catch(() => {});
+            }
+
+            container.innerHTML = html;
+            updateBronCount();
+        }
+
+        function updateBronCount() {
+            const checked = document.querySelectorAll('.bron-checkbox:checked');
+            document.getElementById('bron-count').textContent = `${checked.length} geselecteerd`;
+        }
+
+        function getGeselecteerdeBronnen() {
+            return Array.from(document.querySelectorAll('.bron-checkbox:checked')).map(cb => cb.value);
+        }
+
+        async function voegBronToe() {
+            const input = document.getElementById('bron-handmatig');
+            let val = input.value.trim();
+            if (!val) return;
+
+            // Extract playlist ID from URL
+            // https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...
+            const urlMatch = val.match(/playlist[/:]([a-zA-Z0-9]+)/);
+            if (urlMatch) val = urlMatch[1];
+
+            // Check of deze al in de lijst staat
+            const existing = document.querySelector(`.bron-checkbox[value="${val}"]`);
+            if (existing) {
+                existing.checked = true;
+                updateBronCount();
+                input.value = '';
+                return;
+            }
+
+            // Haal playlist info op via Spotify
+            try {
+                const sp = await fetch(`/api/playlists/${val}`);
+                const data = await sp.json();
+                const naam = data.naam || val;
+                const tracks = data.tracks || '?';
+
+                const container = document.getElementById('bron-playlists-lijst');
+                const label = document.createElement('label');
+                label.className = 'bron-item';
+                label.innerHTML = `
+                    <input type="checkbox" class="bron-checkbox" value="${val}" checked onchange="updateBronCount()">
+                    <span class="bron-item-naam">${naam}</span>
+                    <span class="bron-item-count">${tracks}</span>
+                `;
+                container.prepend(label);
+                updateBronCount();
+                input.value = '';
+            } catch (e) {
+                // Als we de info niet kunnen ophalen, voeg toch toe met ID
+                const container = document.getElementById('bron-playlists-lijst');
+                const label = document.createElement('label');
+                label.className = 'bron-item';
+                label.innerHTML = `
+                    <input type="checkbox" class="bron-checkbox" value="${val}" checked onchange="updateBronCount()">
+                    <span class="bron-item-naam">${val}</span>
+                    <span class="bron-item-count">?</span>
+                `;
+                container.prepend(label);
+                updateBronCount();
+                input.value = '';
+            }
+        }
+
+        // --- Smaakprofiel (editor) ---
+        async function haalSmaakprofielOp() {
+            const btn = document.getElementById('btn-smaakprofiel');
+            const preview = document.getElementById('smaak-preview');
+            btn.disabled = true;
+            preview.textContent = 'Smaakprofiel ophalen van Spotify...';
+
+            try {
+                // Bij bewerken: gebruik lijst-specifiek endpoint
+                let url = '/api/smaakprofiel';
+                if (editLijstId) {
+                    url = `/api/wissellijsten/${editLijstId}/smaakprofiel/ophalen`;
+                }
+                const res = await fetch(url, { method: 'POST' });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                document.getElementById('smaakprofiel-data').value = data.profiel;
+                preview.textContent = data.profiel;
+                toonMelding('Smaakprofiel opgehaald!', 'ok');
+            } catch (e) {
+                preview.textContent = 'Fout bij ophalen: ' + e.message;
+                toonMelding('Smaakprofiel ophalen mislukt: ' + e.message, 'fout');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // --- Overzicht ---
+        function toonLijsten() {
+            const container = document.getElementById('lijsten-container');
+            if (wissellijsten.length === 0) {
+                container.innerHTML = '<p style="color:#888; font-size:0.9em;">Nog geen wissellijsten. Maak er een aan!</p>';
+                return;
+            }
+
+            container.innerHTML = wissellijsten.map(wl => {
+                const playlist = playlists.find(p => p.id === wl.playlist_id);
+                const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
+                const playlistImage = playlist && playlist.image;
+                const blokken = wl.aantal_blokken || 10;
+                const isDiscovery = wl.type === 'discovery';
+
+                const imgHtml = playlistImage
+                    ? `<img class="playlist-card-img" src="${playlistImage}" alt="">`
+                    : `<div class="playlist-card-img-placeholder">&#9835;</div>`;
+
+                const typeBadge = isDiscovery
+                    ? '<span class="type-badge discovery">Discovery</span>'
+                    : '';
+
+                const metaText = isDiscovery
+                    ? `${playlistNaam} &middot; ${(wl.bron_playlists || []).length} bronnen &middot; ${blokken}&times;${wl.blok_grootte || 10}`
+                    : `${playlistNaam} &middot; ${(wl.categorieen || []).length} cat. &middot; ${blokken} blokken`;
+
+                return `
+                    <div class="playlist-card" onclick="naarDetail('${wl.id}')">
+                        ${imgHtml}
+                        <div class="playlist-card-info">
+                            <div class="playlist-card-naam">${wl.naam}${typeBadge}</div>
+                            <div class="playlist-card-meta">${metaText}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- Detail pagina ---
+        function vulDetailPagina() {
+            const wl = wissellijsten.find(w => w.id === activeLijstId);
+            if (!wl) return naarOverzicht();
+
+            const playlist = playlists.find(p => p.id === wl.playlist_id);
+            const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
+            const playlistImage = playlist && playlist.image;
+            const aantalBlokken = wl.aantal_blokken || 10;
+            const isDiscovery = wl.type === 'discovery';
+            const blockSize = isDiscovery ? (wl.blok_grootte || 10) : (wl.categorieen || []).length;
+            const verwachteTracks = blockSize * aantalBlokken;
+
+            // Header image
+            const imgContainer = document.getElementById('detail-img-container');
+            imgContainer.innerHTML = playlistImage
+                ? `<img class="detail-header-img" src="${playlistImage}" alt="">`
+                : `<div class="detail-header-img-placeholder">&#9835;</div>`;
+
+            // Info
+            document.getElementById('detail-naam').textContent = wl.naam;
+            document.getElementById('detail-playlist').textContent = playlistNaam;
+
+            const maxInfo = wl.max_per_artiest ? `Max ${wl.max_per_artiest}/artiest` : 'Geen artiest-limiet';
+            const trackInfo = playlist ? `${playlist.tracks}/${verwachteTracks} tracks` : '';
+
+            if (isDiscovery) {
+                const bronCount = (wl.bron_playlists || []).length;
+                document.getElementById('detail-meta').textContent =
+                    `Discovery \u00b7 ${aantalBlokken}\u00d7${wl.blok_grootte || 10} \u00b7 ${bronCount} bronnen \u00b7 ${maxInfo}${trackInfo ? ' \u00b7 ' + trackInfo : ''}`;
+            } else {
+                document.getElementById('detail-meta').textContent =
+                    `${aantalBlokken} blokken \u00b7 ${maxInfo}${trackInfo ? ' \u00b7 ' + trackInfo : ''}`;
+            }
+
+            // Tags
+            const catsDiv = document.getElementById('detail-cats');
+            if (isDiscovery) {
+                // Toon bron playlist namen als tags
+                const bronNamen = (wl.bron_playlists || []).map(bid => {
+                    const bp = playlists.find(p => p.id === bid);
+                    return bp ? bp.naam : bid;
+                });
+                catsDiv.innerHTML = bronNamen
+                    .map(n => `<span class="detail-cat-tag discovery">${n}</span>`)
+                    .join('');
+            } else {
+                catsDiv.innerHTML = (wl.categorieen || [])
+                    .map(c => `<span class="detail-cat-tag">${c}</span>`)
+                    .join('');
+            }
+
+            // Vullen knop
+            const btnVullen = document.getElementById('btn-vullen');
+            const vulLabel = isDiscovery
+                ? `Scannen & vullen (${aantalBlokken}\u00d7${wl.blok_grootte || 10})`
+                : `Initieel vullen (${aantalBlokken} blokken)`;
+            btnVullen.textContent = vulLabel;
+            if (playlist && playlist.tracks >= verwachteTracks) {
+                btnVullen.disabled = true;
+                btnVullen.textContent = `Playlist is vol (${playlist.tracks}/${verwachteTracks} tracks)`;
+            } else if (playlist && playlist.tracks > 0) {
+                const bestaandeBlokken = Math.floor(playlist.tracks / blockSize);
+                const nog = aantalBlokken - bestaandeBlokken;
+                btnVullen.disabled = false;
+                btnVullen.textContent = nog > 0
+                    ? `Aanvullen (nog ${nog} blokken)`
+                    : vulLabel;
+            } else {
+                btnVullen.disabled = false;
+            }
+
+            // Smaakprofiel tab tonen/verbergen
+            const smaakTab = document.getElementById('tab-smaakprofiel');
+            const discoveryInfo = document.getElementById('discovery-rotatie-info');
+            if (isDiscovery) {
+                smaakTab.classList.remove('hidden');
+                discoveryInfo.classList.remove('hidden');
+            } else {
+                smaakTab.classList.add('hidden');
+                discoveryInfo.classList.add('hidden');
+            }
+
+            // Roteren knop tekst aanpassen voor discovery
+            const btnRoteren = document.getElementById('btn-roteren');
+            btnRoteren.textContent = isDiscovery
+                ? 'Analyseren & roteren'
+                : 'Roteren';
+
+            // Reset voortgang
+            document.getElementById('voortgang-container').classList.add('hidden');
+
+            // Schedule status
+            const scheduleDiv = document.getElementById('schedule-status');
+            const schema = wl.rotatie_schema || 'uit';
+            if (schema !== 'uit') {
+                const tijdstip = wl.rotatie_tijdstip || '08:00';
+                const dagen = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+                let schemaText;
+                if (schema === 'elk_uur') {
+                    schemaText = 'Automatische rotatie: elk uur';
+                } else if (schema === 'elke_3_uur') {
+                    schemaText = 'Automatische rotatie: elke 3 uur';
+                } else {
+                    schemaText = `Automatische rotatie: ${schema} om ${tijdstip}`;
+                    if (schema === 'wekelijks') {
+                        schemaText += ` (${dagen[wl.rotatie_dag || 0]})`;
+                    }
+                }
+                if (wl.laatste_rotatie) {
+                    const dt = new Date(wl.laatste_rotatie);
+                    schemaText += ` \u00b7 Laatste: ${dt.toLocaleDateString('nl-NL')} ${dt.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'})}`;
+                }
+                if (wl.mail_na_rotatie && wl.mail_adres) {
+                    schemaText += ` \u00b7 Mail naar ${wl.mail_adres}`;
+                }
+                scheduleDiv.innerHTML = `<div class="schedule-info">${schemaText}</div>`;
+            } else {
+                scheduleDiv.innerHTML = '';
+            }
+        }
+
+        // --- Editor ---
+        function setEditorType(type) {
+            document.getElementById('editor-type').value = type;
+            if (type === 'discovery') {
+                document.getElementById('editor-categorie-velden').classList.add('hidden');
+                document.getElementById('editor-discovery-velden').classList.remove('hidden');
+                if (!editLijstId) document.getElementById('aantal-blokken').value = '5';
+                vulBronPlaylists();
+            } else {
+                document.getElementById('editor-categorie-velden').classList.remove('hidden');
+                document.getElementById('editor-discovery-velden').classList.add('hidden');
+                if (!editLijstId) document.getElementById('aantal-blokken').value = '10';
+            }
+        }
+
+        function nieuweLijst(type) {
+            type = type || 'categorie';
+            editLijstId = null;
+            previousView = 'overzicht';
+
+            const typeLabel = type === 'discovery' ? 'Discovery Wissellijst' : 'Nieuwe Wissellijst';
+            document.getElementById('editor-titel').textContent = typeLabel;
+            document.getElementById('naam').value = '';
+            document.getElementById('playlist-select').value = '';
+            document.getElementById('max-per-artiest').value = '0';
+            document.getElementById('rotatie-schema').value = type === 'discovery' ? 'wekelijks' : 'uit';
+            document.getElementById('rotatie-tijdstip').value = '08:00';
+            document.getElementById('rotatie-dag').value = '0';
+            document.getElementById('blok-grootte').value = '10';
+            document.getElementById('smaakprofiel-data').value = '';
+            document.getElementById('smaak-preview').textContent = 'Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.';
+            document.getElementById('mail-na-rotatie').checked = false;
+            document.getElementById('mail-adres').value = '';
+
+            onRotatieSchemaChange();
+            onMailToggle();
+            setEditorType(type);
+
+            if (type === 'categorie') {
+                zetCategorieen(['80s', '90s', '00s', '10s', '20s']);
+            }
+
+            toonView('editor');
+        }
+
+        function bewerkLijst(id) {
+            const wl = wissellijsten.find(w => w.id === id);
+            editLijstId = id;
+            previousView = activeLijstId ? 'detail' : 'overzicht';
+
+            const type = wl.type || 'categorie';
+            const typeLabel = type === 'discovery' ? 'Discovery Bewerken' : 'Bewerk Wissellijst';
+            document.getElementById('editor-titel').textContent = typeLabel;
+            document.getElementById('naam').value = wl.naam;
+            document.getElementById('playlist-select').value = wl.playlist_id;
+            document.getElementById('max-per-artiest').value = wl.max_per_artiest || 0;
+            document.getElementById('aantal-blokken').value = wl.aantal_blokken || (type === 'discovery' ? 5 : 10);
+            document.getElementById('rotatie-schema').value = wl.rotatie_schema || 'uit';
+            document.getElementById('rotatie-tijdstip').value = wl.rotatie_tijdstip || '08:00';
+            document.getElementById('rotatie-dag').value = wl.rotatie_dag || 0;
+            document.getElementById('blok-grootte').value = wl.blok_grootte || 10;
+            document.getElementById('smaakprofiel-data').value = wl.smaakprofiel || '';
+            document.getElementById('smaak-preview').textContent = wl.smaakprofiel || 'Nog geen smaakprofiel. Klik op ophalen.';
+            document.getElementById('mail-na-rotatie').checked = !!wl.mail_na_rotatie;
+            document.getElementById('mail-adres').value = wl.mail_adres || '';
+
+            onRotatieSchemaChange();
+            onMailToggle();
+            setEditorType(type);
+
+            if (type === 'discovery') {
+                vulBronPlaylists(wl.bron_playlists || []);
+            } else {
+                zetCategorieen(wl.categorieen || []);
+            }
+
+            toonView('editor');
+        }
+
+        function annuleren() {
+            if (previousView === 'detail' && activeLijstId) {
+                toonView('detail');
+            } else {
+                toonView('overzicht');
+            }
+        }
+
+        function onRotatieSchemaChange() {
+            const schema = document.getElementById('rotatie-schema').value;
+            const opties = document.getElementById('rotatie-opties');
+            const dagContainer = document.getElementById('rotatie-dag-container');
+
+            if (schema === 'uit' || schema === 'elk_uur' || schema === 'elke_3_uur') {
+                opties.classList.add('hidden');
+            } else {
+                opties.classList.remove('hidden');
+                dagContainer.classList.toggle('hidden', schema !== 'wekelijks');
+            }
+        }
+
+        function onMailToggle() {
+            const checked = document.getElementById('mail-na-rotatie').checked;
+            document.getElementById('mail-opties').classList.toggle('hidden', !checked);
+        }
+
+        function zetCategorieen(lijst) {
+            const container = document.getElementById('categorieen-container');
+            container.innerHTML = '';
+            lijst.forEach((cat, i) => {
+                const row = document.createElement('div');
+                row.className = 'categorie-row';
+                row.style.marginBottom = '6px';
+                row.innerHTML = `
+                    <span class="categorie-nr">${i + 1}</span>
+                    <input type="text" class="cat-input" value="${cat}" placeholder="Bijv. 80s, vrouwen met jazzy voice...">
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function categorieToevoegen() {
+            const inputs = document.querySelectorAll('.cat-input');
+            if (inputs.length >= 10) return;
+            const container = document.getElementById('categorieen-container');
+            const row = document.createElement('div');
+            row.className = 'categorie-row';
+            row.style.marginBottom = '6px';
+            row.innerHTML = `
+                <span class="categorie-nr">${inputs.length + 1}</span>
+                <input type="text" class="cat-input" value="" placeholder="Bijv. indie rock, soul classics...">
+            `;
+            container.appendChild(row);
+        }
+
+        function categorieVerwijderen() {
+            const inputs = document.querySelectorAll('.cat-input');
+            if (inputs.length <= 2) return;
+            const container = document.getElementById('categorieen-container');
+            container.removeChild(container.lastElementChild);
+        }
+
+        async function opslaan() {
+            const type = document.getElementById('editor-type').value;
+            const naam = document.getElementById('naam').value.trim();
+            const playlistId = document.getElementById('playlist-select').value;
+
+            if (!naam) return toonMelding('Vul een naam in.', 'fout');
+            if (!playlistId) return toonMelding('Kies een doelplaylist.', 'fout');
+
+            const maxPerArtiest = parseInt(document.getElementById('max-per-artiest').value) || 0;
+            const aantalBlokken = parseInt(document.getElementById('aantal-blokken').value) || (type === 'discovery' ? 5 : 10);
+            const rotatieSchema = document.getElementById('rotatie-schema').value;
+            const rotatieTijdstip = document.getElementById('rotatie-tijdstip').value || '08:00';
+            const rotatieDag = parseInt(document.getElementById('rotatie-dag').value) || 0;
+
+            const body = {
+                type,
+                naam,
+                playlist_id: playlistId,
+                max_per_artiest: maxPerArtiest,
+                aantal_blokken: aantalBlokken,
+                rotatie_schema: rotatieSchema,
+                rotatie_tijdstip: rotatieTijdstip,
+                rotatie_dag: rotatieDag,
+                mail_na_rotatie: document.getElementById('mail-na-rotatie').checked,
+                mail_adres: document.getElementById('mail-adres').value.trim(),
+            };
+
+            if (type === 'discovery') {
+                const bronPlaylists = getGeselecteerdeBronnen();
+                if (bronPlaylists.length === 0) return toonMelding('Selecteer minimaal 1 bronlijst.', 'fout');
+
+                // Smaakprofiel uit hidden veld of bestaand
+                const smaakData = document.getElementById('smaakprofiel-data').value;
+                body.bron_playlists = bronPlaylists;
+                body.smaakprofiel = smaakData || '';
+                body.blok_grootte = parseInt(document.getElementById('blok-grootte').value) || 10;
+                body.categorieen = [];
+            } else {
+                const catInputs = document.querySelectorAll('.cat-input');
+                const categorieen = Array.from(catInputs).map(i => i.value.trim()).filter(Boolean);
+                if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorie\u00ebn in.', 'fout');
+                body.categorieen = categorieen;
+            }
+
+            if (editLijstId) body.id = editLijstId;
+
+            try {
+                const res = await fetch('/api/wissellijsten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const result = await res.json();
+                toonMelding('Wissellijst opgeslagen!', 'ok');
+                await laadWissellijsten();
+                naarDetail(result.id);
+            } catch (e) {
+                toonMelding('Opslaan mislukt: ' + e.message, 'fout');
+            }
+        }
+
+        async function verwijderLijst(id) {
+            if (!confirm('Weet je het zeker?')) return;
+            await fetch(`/api/wissellijsten/${id}`, { method: 'DELETE' });
+            activeLijstId = null;
+            await laadWissellijsten();
+            toonMelding('Wissellijst verwijderd.', 'ok');
+            toonView('overzicht');
+        }
+
+        async function herstartenLijst(id) {
+            if (!confirm('Weet je het zeker? Dit maakt de playlist leeg en wist alle historie en wachtrij.')) return;
+            try {
+                const res = await fetch(`/api/wissellijsten/${id}/herstarten`, { method: 'POST' });
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const data = await res.json();
+                if (data.ok) {
+                    toonMelding(data.tekst, 'ok');
+                    await laadPlaylists();
+                    vulDetailPagina();
+                } else {
+                    toonMelding('Herstarten mislukt: ' + (data.error || 'onbekend'), 'fout');
+                }
+            } catch (e) {
+                toonMelding('Herstarten mislukt: ' + e.message, 'fout');
+            }
+        }
+
+        // --- Nieuwe Spotify Playlist ---
+        function toonNieuwePlaylistModal() {
+            document.getElementById('nieuwe-playlist-naam').value = '';
+            document.getElementById('nieuwe-playlist-modal').classList.add('visible');
+        }
+
+        function sluitNieuwePlaylistModal(event) {
+            if (event.target === event.currentTarget) {
+                document.getElementById('nieuwe-playlist-modal').classList.remove('visible');
+            }
+        }
+
+        async function maakNieuwePlaylist() {
+            const naam = document.getElementById('nieuwe-playlist-naam').value.trim();
+            if (!naam) return toonMelding('Vul een naam in voor de playlist.', 'fout');
+
+            try {
+                const res = await fetch('/api/playlists', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ naam }),
+                });
+                const result = await res.json();
+                if (result.error) throw new Error(result.error);
+
+                playlists.unshift(result);
+                vulPlaylistSelect();
+                document.getElementById('playlist-select').value = result.id;
+                document.getElementById('nieuwe-playlist-modal').classList.remove('visible');
+                toonMelding(`Playlist "${result.naam}" aangemaakt op Spotify!`, 'ok');
+            } catch (e) {
+                toonMelding('Playlist aanmaken mislukt: ' + e.message, 'fout');
+            }
+        }
+
+        // --- Initieel vullen ---
+        async function initieelVullen() {
+            if (!activeLijstId) return;
+
+            const btn = document.getElementById('btn-vullen');
+            btn.disabled = true;
+
+            const voortgangDiv = document.getElementById('voortgang-container');
+            voortgangDiv.classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/vullen', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lijst_id: activeLijstId }),
+                });
+                const { task_id } = await res.json();
+
+                pollTask(task_id, (status) => {
+                    document.getElementById('progress-fill').style.width = status.voortgang + '%';
+                    document.getElementById('voortgang-tekst').textContent = status.tekst;
+                }, (status) => {
+                    toonMelding(status.tekst, 'ok');
+                    laadPlaylists().then(() => vulDetailPagina());
+                }, (status) => {
+                    toonMelding('Fout: ' + status.tekst, 'fout');
+                    btn.disabled = false;
+                });
+            } catch (e) {
+                toonMelding('Kon vullen niet starten: ' + e.message, 'fout');
+                btn.disabled = false;
+            }
+        }
+
+        // --- Rotatie ---
+        async function roteren() {
+            if (!activeLijstId) return;
+
+            const btn = document.getElementById('btn-roteren');
+            btn.disabled = true;
+
+            const voortgangDiv = document.getElementById('voortgang-container');
+            voortgangDiv.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/roteren`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const { task_id } = await res.json();
+
+                pollTask(task_id, (status) => {
+                    document.getElementById('progress-fill').style.width = status.voortgang + '%';
+                    document.getElementById('voortgang-tekst').textContent = status.tekst;
+                }, (status) => {
+                    toonMelding(status.tekst, 'ok');
+                    btn.disabled = false;
+                    laadPlaylists().then(() => {
+                        laadWissellijsten().then(() => vulDetailPagina());
+                    });
+                }, (status) => {
+                    toonMelding('Fout: ' + status.tekst, 'fout');
+                    btn.disabled = false;
+                });
+            } catch (e) {
+                toonMelding('Kon rotatie niet starten: ' + e.message, 'fout');
+                btn.disabled = false;
+            }
+        }
+
+        // --- Smaakprofiel ---
+        async function laadSmaakprofiel() {
+            if (!activeLijstId) return;
+            const textarea = document.getElementById('smaakprofiel-tekst');
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/smaakprofiel`);
+                const data = await res.json();
+                textarea.value = data.profiel || '';
+
+                // Als er geen eigen toevoegingen sectie is, voeg placeholder toe
+                if (data.profiel && !data.profiel.includes('=== EIGEN TOEVOEGINGEN ===')) {
+                    textarea.value += '\n\n=== EIGEN TOEVOEGINGEN ===\nVoeg hier je eigen favoriete artiesten, nummers of genres toe:\n';
+                }
+            } catch (e) {
+                textarea.value = 'Fout bij laden: ' + e.message;
+            }
+        }
+
+        async function ophalenSpotifyProfiel() {
+            if (!activeLijstId) return;
+            const btn = document.getElementById('btn-ophalen-profiel');
+            const statusDiv = document.getElementById('profiel-ophalen-status');
+            const statusTekst = document.getElementById('profiel-status-tekst');
+
+            btn.disabled = true;
+            statusDiv.classList.remove('hidden');
+            statusTekst.textContent = 'Smaakprofiel ophalen van Spotify...';
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/smaakprofiel/ophalen`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                const textarea = document.getElementById('smaakprofiel-tekst');
+                textarea.value = data.profiel;
+
+                if (!data.profiel.includes('=== EIGEN TOEVOEGINGEN ===')) {
+                    textarea.value += '\n\n=== EIGEN TOEVOEGINGEN ===\nVoeg hier je eigen favoriete artiesten, nummers of genres toe:\n';
+                }
+
+                statusTekst.textContent = 'Profiel opgehaald!';
+                toonMelding('Smaakprofiel opgehaald van Spotify', 'ok');
+            } catch (e) {
+                statusTekst.textContent = 'Fout: ' + e.message;
+                toonMelding('Fout bij ophalen: ' + e.message, 'fout');
+            } finally {
+                btn.disabled = false;
+                setTimeout(() => statusDiv.classList.add('hidden'), 3000);
+            }
+        }
+
+        async function opslaanProfiel() {
+            if (!activeLijstId) return;
+            const textarea = document.getElementById('smaakprofiel-tekst');
+            const btn = document.getElementById('btn-opslaan-profiel');
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/smaakprofiel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profiel: textarea.value }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                toonMelding('Smaakprofiel opgeslagen', 'ok');
+            } catch (e) {
+                toonMelding('Fout bij opslaan: ' + e.message, 'fout');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // --- Polling helper ---
+        function pollTask(taskId, onProgress, onDone, onError) {
+            const poll = setInterval(async () => {
+                try {
+                    const statusRes = await fetch(`/api/vullen/${taskId}`);
+                    const status = await statusRes.json();
+
+                    onProgress(status);
+
+                    if (status.status === 'klaar') {
+                        clearInterval(poll);
+                        onDone(status);
+                    } else if (status.status === 'fout') {
+                        clearInterval(poll);
+                        onError(status);
+                    }
+                } catch (e) {
+                    clearInterval(poll);
+                    onError({ tekst: e.message });
+                }
+            }, 2000);
+        }
+
+        // --- Wachtrij ---
+        async function genereerWachtrij() {
+            if (!activeLijstId) return;
+
+            const btn = document.getElementById('btn-genereer-wachtrij');
+            btn.disabled = true;
+
+            const voortgangDiv = document.getElementById('wachtrij-voortgang');
+            voortgangDiv.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij/genereer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const { task_id } = await res.json();
+
+                pollTask(task_id, (status) => {
+                    document.getElementById('wachtrij-progress-fill').style.width = status.voortgang + '%';
+                    document.getElementById('wachtrij-voortgang-tekst').textContent = status.tekst;
+                }, (status) => {
+                    voortgangDiv.classList.add('hidden');
+                    toonMelding(status.tekst, 'ok');
+                    btn.disabled = false;
+                    laadWachtrij();
+                }, (status) => {
+                    voortgangDiv.classList.add('hidden');
+                    toonMelding('Fout: ' + status.tekst, 'fout');
+                    btn.disabled = false;
+                });
+            } catch (e) {
+                voortgangDiv.classList.add('hidden');
+                toonMelding('Kon wachtrij niet genereren: ' + e.message, 'fout');
+                btn.disabled = false;
+            }
+        }
+
+        async function laadWachtrij() {
+            if (!activeLijstId) return;
+
+            const lijst = document.getElementById('wachtrij-lijst');
+            const status = document.getElementById('wachtrij-status');
+            const actiesDiv = document.getElementById('wachtrij-acties');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij`);
+                const entries = await res.json();
+
+                if (entries.length === 0) {
+                    status.textContent = 'Geen tracks in de wachtrij.';
+                    lijst.innerHTML = '';
+                    actiesDiv.classList.remove('hidden');
+                } else {
+                    actiesDiv.classList.add('hidden');
+                    status.textContent = `${entries.length} tracks klaar voor de volgende rotatie`;
+                    lijst.innerHTML = entries.map((e, i) => `
+                        <div class="wachtrij-item">
+                            <div>
+                                <span class="historie-item-artiest">${e.artiest}</span>
+                                <span class="historie-item-titel"> \u2014 ${e.titel}</span>
+                            </div>
+                            <div class="item-actions">
+                                <span class="historie-item-cat">${e.categorie}</span>
+                                <button class="btn-icon" onclick="openVervangModal(${i}, '${e.categorie.replace(/'/g, "\\'")}', '${e.artiest.replace(/'/g, "\\'")}', '${e.titel.replace(/'/g, "\\'")}')" title="Vervangen">&#9998;</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                toonMelding('Kan wachtrij niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        // --- Vervang modal ---
+        function openVervangModal(index, categorie, artiest, titel) {
+            vervangIndex = index;
+            document.getElementById('vervang-categorie').textContent = categorie;
+            document.getElementById('vervang-artiest').value = artiest;
+            document.getElementById('vervang-titel').value = titel;
+            document.getElementById('vervang-status').classList.add('hidden');
+            document.getElementById('btn-vervang').disabled = false;
+            document.getElementById('vervang-modal').classList.add('visible');
+        }
+
+        function sluitVervangModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('vervang-modal').classList.remove('visible');
+            vervangIndex = null;
+        }
+
+        async function zoekEnVervang() {
+            const artiest = document.getElementById('vervang-artiest').value.trim();
+            const titel = document.getElementById('vervang-titel').value.trim();
+
+            if (!artiest || !titel) return toonMelding('Vul artiest en titel in.', 'fout');
+
+            const btn = document.getElementById('btn-vervang');
+            const statusEl = document.getElementById('vervang-status');
+            btn.disabled = true;
+            statusEl.textContent = 'Zoeken op Spotify...';
+            statusEl.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij/vervang`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: vervangIndex, artiest, titel }),
+                });
+                const result = await res.json();
+
+                if (result.error) {
+                    statusEl.textContent = result.error;
+                    btn.disabled = false;
+                } else {
+                    document.getElementById('vervang-modal').classList.remove('visible');
+                    toonMelding('Track vervangen!', 'ok');
+                    laadWachtrij();
+                }
+            } catch (e) {
+                statusEl.textContent = 'Fout: ' + e.message;
+                btn.disabled = false;
+            }
+        }
+
+        // --- Historie ---
+        async function laadHistorie() {
+            if (!activeLijstId) return;
+
+            const lijst = document.getElementById('historie-lijst');
+            const count = document.getElementById('historie-count');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie`);
+                const entries = await res.json();
+
+                if (entries.length === 0) {
+                    count.textContent = 'Nog geen historie voor deze wissellijst.';
+                    lijst.innerHTML = '';
+                } else {
+                    count.textContent = `${entries.length} nummers in historie`;
+                    const reversed = entries.map((e, i) => ({...e, origIndex: i})).reverse();
+                    lijst.innerHTML = reversed.map(e => `
+                        <div class="historie-item">
+                            <div>
+                                <span class="historie-item-artiest">${e.artiest}</span>
+                                <span class="historie-item-titel"> \u2014 ${e.titel}</span>
+                            </div>
+                            <div class="item-actions">
+                                <span class="historie-item-cat">${e.categorie}</span>
+                                <button class="btn-icon btn-icon-danger" onclick="verwijderHistorie(${e.origIndex})" title="Verwijderen">&times;</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                toonMelding('Kan historie niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        async function wisHistorie() {
+            if (!activeLijstId) return;
+            if (!confirm('Weet je zeker dat je de volledige historie wilt wissen? Alle nummers worden weer beschikbaar voor rotatie.')) return;
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie`, {
+                    method: 'DELETE',
+                });
+                const result = await res.json();
+                if (result.error) {
+                    toonMelding(result.error, 'fout');
+                } else {
+                    toonMelding(result.tekst, 'succes');
+                    laadHistorie();
+                }
+            } catch (e) {
+                toonMelding('Historie wissen mislukt: ' + e.message, 'fout');
+            }
+        }
+
+        async function verwijderHistorie(index) {
+            if (!confirm('Weet je zeker dat je dit item wilt verwijderen?')) return;
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie/${index}`, {
+                    method: 'DELETE',
+                });
+                const result = await res.json();
+                if (result.error) {
+                    toonMelding(result.error, 'fout');
+                } else {
+                    laadHistorie();
+                }
+            } catch (e) {
+                toonMelding('Verwijderen mislukt: ' + e.message, 'fout');
+            }
+        }
+
+        // --- UI Helpers ---
+        function toonMelding(tekst, type) {
+            const el = document.getElementById('melding');
+            el.textContent = tekst;
+            el.className = type === 'ok' ? 'melding-ok' : 'melding-fout';
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

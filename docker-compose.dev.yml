@@ -1,0 +1,12 @@
+services:
+  wissellijst:
+    build: .
+    container_name: wissellijst-dev
+    ports:
+      - "9090:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app
+      - ./data:/app/data
+      - ./.secrets:/app/.secrets

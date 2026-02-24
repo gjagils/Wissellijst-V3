@@ -1,0 +1,24 @@
+services:
+  wissellijst:
+    image: ghcr.io/gjagils/wissellijst-v3:latest
+    container_name: wissellijst
+    restart: unless-stopped
+    ports:
+      - "9090:5000"
+    environment:
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://127.0.0.1:8888/callback}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+    volumes:
+      - wissellijst-data:/app/data
+      - wissellijst-secrets:/app/.secrets
+
+volumes:
+  wissellijst-data:
+  wissellijst-secrets:
