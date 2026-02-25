@@ -49,18 +49,23 @@ def search_spotify(sp, artist, title):
             "release_date": track.get("album", {}).get("release_date", ""),
         }
 
-    results = sp.search(q=f"track:{title} artist:{artist}", limit=1, type="track")
-    tracks = results.get("tracks", {}).get("items", [])
-    if tracks:
-        return _extract(tracks[0])
+    try:
+        results = sp.search(q=f"track:{title} artist:{artist}", limit=1, type="track")
+        tracks = results.get("tracks", {}).get("items", [])
+        if tracks:
+            return _extract(tracks[0])
 
-    results = sp.search(q=f"{artist} {title}", limit=5, type="track")
-    tracks = results.get("tracks", {}).get("items", [])
-    artist_lower = artist.lower()
-    for t in tracks:
-        if any(artist_lower in a["name"].lower() for a in t.get("artists", [])):
-            return _extract(t)
-    return None
+        results = sp.search(q=f"{artist} {title}", limit=5, type="track")
+        tracks = results.get("tracks", {}).get("items", [])
+        artist_lower = artist.lower()
+        for t in tracks:
+            if any(artist_lower in a["name"].lower() for a in t.get("artists", [])):
+                return _extract(t)
+        return None
+    except Exception as e:
+        logger.warning("Spotify search fout",
+                       extra={"artiest": artist, "titel": title, "error": str(e)})
+        return None
 
 
 def _parse_history_line(line):
@@ -144,14 +149,78 @@ def ask_gpt_for_suggestions(categorieen, exclude_artists, blocked_artists=None, 
         "Geef ALLEEN de regels, geen extra tekst."
     )
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "Je bent een muziekexpert. Geef alleen de gevraagde syntax regels."},
-            {"role": "user", "content": prompt},
-        ],
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Je bent een muziekexpert. Geef alleen de gevraagde syntax regels."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return response.choices[0].message.content.strip().split("\n")
+    except Exception as e:
+        logger.error("OpenAI suggesties mislukt", extra={"error": str(e)})
+        return []
+
+
+def _ask_gpt_replacements(missing_cats, skipped_info, exclude_artists,
+                           blocked_artists=None, per_categorie=5):
+    """Vraag GPT om vervangende suggesties voor missende categorieën.
+
+    Geeft context mee over welke artiesten/titels al geprobeerd zijn en waarom
+    ze faalden, zodat GPT betere alternatieven kan geven.
+    """
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    cat_beschrijving = ", ".join(f"{i+1}. {c}" for i, c in enumerate(missing_cats))
+    totaal = len(missing_cats) * per_categorie
+    blocked_list = blocked_artists or []
+
+    # Bouw context over eerder gefaalde suggesties
+    skip_context = ""
+    for cat in missing_cats:
+        reasons = skipped_info.get(cat, [])
+        if reasons:
+            skip_context += f"\n- {cat}: " + "; ".join(reasons[:5])
+
+    prompt = (
+        f"Geef {per_categorie} muziek suggesties per categorie, dus {totaal} regels totaal.\n"
+        f"Categorieën: {cat_beschrijving}\n"
     )
-    return response.choices[0].message.content.strip().split("\n")
+    if skip_context:
+        prompt += (
+            f"\nEerder geprobeerde suggesties die NIET werkten:{skip_context}\n"
+            "Kies COMPLEET ANDERE artiesten dan hierboven.\n"
+        )
+    if blocked_list:
+        prompt += (
+            f"VERBODEN artiesten (ABSOLUUT NIET GEBRUIKEN): "
+            f"{', '.join(blocked_list)}.\n"
+        )
+    if exclude_artists:
+        prompt += (
+            f"Liever niet (staan al in playlist): {', '.join(exclude_artists[:60])}.\n"
+        )
+    prompt += (
+        "Wees creatief en kies GEEN voor de hand liggende artiesten. "
+        "Denk aan minder bekende maar geldige nummers.\n"
+        "Zorg dat alle artiesten VERSCHILLEND zijn.\n"
+        "Syntax per regel: categorie | artiest | titel\n"
+        "Geef ALLEEN de regels, geen extra tekst."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Je bent een muziekexpert. Geef alleen de gevraagde syntax regels."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return response.choices[0].message.content.strip().split("\n")
+    except Exception as e:
+        logger.error("OpenAI re-ask mislukt", extra={"error": str(e)})
+        return []
 
 
 def _extract_decade(category):
@@ -185,31 +254,13 @@ def _match_categorie(raw_cat, categorieen, filled):
     return None
 
 
-def generate_block(sp, playlist_id, categorieen, history_file=None, wl_id=None,
-                   max_per_artiest=0):
-    """Genereer één blok suggesties (1 per categorie), gevalideerd op Spotify."""
-    history_file = history_file or HISTORY_FILE
+def _process_suggestions(raw_suggestions, categorieen, filled, skipped,
+                          used_uris, artist_counts, max_per_artiest, sp):
+    """Verwerk GPT-suggesties: valideer en vul het blok.
 
-    current_tracks = sp.playlist_items(playlist_id)["items"]
-    active_artists = [t["track"]["artists"][0]["name"] for t in current_tracks if t.get("track")]
-    history_artists, history_uris, artist_counts = load_history(
-        history_file, wl_id=wl_id)
-
-    for a in active_artists:
-        artist_counts[a] = artist_counts.get(a, 0) + 1
-
-    if max_per_artiest > 0:
-        blocked_artists = [a for a, c in artist_counts.items() if c >= max_per_artiest]
-    else:
-        blocked_artists = []
-
-    exclude = list(set(active_artists + history_artists[-50:]))
-    raw_suggestions = ask_gpt_for_suggestions(
-        categorieen, exclude, blocked_artists=blocked_artists, per_categorie=5)
-
-    filled = {}
-    used_uris = set(history_uris)
-
+    Gedeelde logica voor zowel de eerste ronde als re-asks.
+    Muteert filled, skipped, used_uris en artist_counts in-place.
+    """
     for line in raw_suggestions:
         if "|" not in line:
             continue
@@ -225,31 +276,48 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, wl_id=None,
         if not matched_cat:
             continue
 
+        # Validatie 1: artiest limiet
         if not validate_artist_limit(artist, artist_counts, max_per_artiest):
-            logger.debug("Skip: artiest op max",
-                         extra={"artiest": artist, "titel": title})
+            reason = f'"{artist} - {title}" (artiest op max)'
+            skipped.setdefault(matched_cat, []).append(reason)
+            logger.info("Skip: artiest op max",
+                        extra={"artiest": artist, "titel": title,
+                               "categorie": matched_cat})
             continue
 
+        # Validatie 2: Spotify zoeken
         result = search_spotify(sp, artist, title)
         if not result:
-            logger.debug("Skip: niet gevonden op Spotify",
-                         extra={"artiest": artist, "titel": title})
+            reason = f'"{artist} - {title}" (niet op Spotify)'
+            skipped.setdefault(matched_cat, []).append(reason)
+            logger.info("Skip: niet gevonden op Spotify",
+                        extra={"artiest": artist, "titel": title,
+                               "categorie": matched_cat})
             continue
         uri = result["uri"]
         release_date = result["release_date"]
 
+        # Validatie 3: niet al in historie
         if not validate_history(uri, used_uris):
-            logger.debug("Skip: al in historie",
-                         extra={"artiest": artist, "titel": title})
+            reason = f'"{artist} - {title}" (al in historie)'
+            skipped.setdefault(matched_cat, []).append(reason)
+            logger.info("Skip: al in historie",
+                        extra={"artiest": artist, "titel": title,
+                               "categorie": matched_cat})
             continue
 
+        # Validatie 4: decade check
         expected_decade = _extract_decade(matched_cat)
         if expected_decade and not validate_decade(release_date, expected_decade):
-            logger.debug("Skip: decade mismatch",
-                         extra={"artiest": artist, "titel": title,
-                                "verwacht": expected_decade})
+            reason = f'"{artist} - {title}" (decade mismatch, verwacht {expected_decade})'
+            skipped.setdefault(matched_cat, []).append(reason)
+            logger.info("Skip: decade mismatch",
+                        extra={"artiest": artist, "titel": title,
+                               "categorie": matched_cat,
+                               "verwacht": expected_decade})
             continue
 
+        # Track goedgekeurd!
         filled[matched_cat] = {
             "categorie": matched_cat,
             "artiest": artist,
@@ -265,14 +333,111 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, wl_id=None,
         if len(filled) == len(categorieen):
             break
 
-    if len(filled) < len(categorieen):
-        missing = [c for c in categorieen if c not in filled]
-        logger.warning("Onvolledig blok",
-                       extra={"gevuld": len(filled), "totaal": len(categorieen),
-                              "missend": missing})
+
+def generate_block(sp, playlist_id, categorieen, history_file=None, wl_id=None,
+                   max_per_artiest=0):
+    """Genereer één blok suggesties (1 per categorie), gevalideerd op Spotify.
+
+    Strategie:
+    1. Vraag GPT om 5 suggesties per categorie
+    2. Valideer elke suggestie (artiest, Spotify, historie, decade)
+    3. Als categorieën missen: re-ask GPT met context over waarom eerdere faalden
+    4. Max 2 re-asks (totaal max 3 GPT calls)
+    5. Accepteer gedeeltelijk blok als >= 80% gevuld
+    """
+    history_file = history_file or HISTORY_FILE
+
+    # Playlist items ophalen
+    try:
+        current_tracks = sp.playlist_items(playlist_id)["items"]
+    except Exception as e:
+        logger.error("Kan playlist items niet ophalen",
+                     extra={"playlist_id": playlist_id, "error": str(e)})
         return None
 
-    return [filled[c] for c in categorieen]
+    active_artists = [t["track"]["artists"][0]["name"] for t in current_tracks if t.get("track")]
+    history_artists, history_uris, artist_counts = load_history(
+        history_file, wl_id=wl_id)
+
+    for a in active_artists:
+        artist_counts[a] = artist_counts.get(a, 0) + 1
+
+    if max_per_artiest > 0:
+        blocked_artists = [a for a, c in artist_counts.items() if c >= max_per_artiest]
+    else:
+        blocked_artists = []
+
+    exclude = list(set(active_artists + history_artists[-50:]))
+
+    # --- Ronde 1: eerste GPT call ---
+    raw_suggestions = ask_gpt_for_suggestions(
+        categorieen, exclude, blocked_artists=blocked_artists, per_categorie=5)
+
+    filled = {}
+    skipped = {}  # {"categorie": ["reden1", "reden2", ...]}
+    used_uris = set(history_uris)
+
+    _process_suggestions(raw_suggestions, categorieen, filled, skipped,
+                          used_uris, artist_counts, max_per_artiest, sp)
+
+    # --- Ronde 2-3: re-ask voor missende categorieën ---
+    max_reasks = 2
+    reask_count = 0
+
+    for reask in range(max_reasks):
+        missing = [c for c in categorieen if c not in filled]
+        if not missing:
+            break
+
+        reask_count += 1
+        logger.info("Re-ask voor missende categorieën",
+                    extra={"poging": reask_count, "missend": missing,
+                           "skipped": {cat: len(reasons) for cat, reasons in skipped.items()
+                                       if cat in missing}})
+
+        # Update blocked_artists (kan veranderd zijn door nieuwe fills)
+        if max_per_artiest > 0:
+            blocked_artists = [a for a, c in artist_counts.items() if c >= max_per_artiest]
+
+        extra_suggestions = _ask_gpt_replacements(
+            missing, skipped, exclude, blocked_artists=blocked_artists, per_categorie=5)
+
+        if not extra_suggestions:
+            logger.warning("Re-ask leverde geen suggesties op",
+                           extra={"poging": reask_count})
+            continue
+
+        _process_suggestions(extra_suggestions, categorieen, filled, skipped,
+                              used_uris, artist_counts, max_per_artiest, sp)
+
+    # --- Resultaat evalueren ---
+    total = len(categorieen)
+    filled_count = len(filled)
+
+    logger.info("Blok resultaat",
+                extra={"gevuld": filled_count, "totaal": total,
+                       "reasks": reask_count,
+                       "skipped_per_categorie": {cat: len(r) for cat, r in skipped.items()}})
+
+    if filled_count == total:
+        return [filled[c] for c in categorieen]
+
+    # Gedeeltelijk blok: accepteer als >= 80% gevuld
+    threshold = max(1, int(total * 0.8))
+
+    if filled_count >= threshold:
+        missing = [c for c in categorieen if c not in filled]
+        logger.warning("Gedeeltelijk blok geaccepteerd",
+                       extra={"gevuld": filled_count, "totaal": total,
+                              "missend": missing, "threshold": threshold})
+        return [filled[c] for c in categorieen if c in filled]
+    else:
+        missing = [c for c in categorieen if c not in filled]
+        logger.warning("Blok afgewezen na re-asks",
+                       extra={"gevuld": filled_count, "totaal": total,
+                              "missend": missing, "threshold": threshold,
+                              "reasks": reask_count})
+        return None
 
 
 def initial_fill(playlist_id, categorieen, history_file=None, queue_file=None,
@@ -327,7 +492,14 @@ def initial_fill(playlist_id, categorieen, history_file=None, queue_file=None,
                         f.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
         else:
             uris = [t["uri"] for t in block]
-            sp.playlist_add_items(playlist_id, uris)
+            try:
+                sp.playlist_add_items(playlist_id, uris)
+            except Exception as e:
+                logger.error("Kon tracks niet toevoegen aan playlist",
+                             extra={"playlist_id": playlist_id, "error": str(e),
+                                    "tracks": len(uris)})
+                mislukt += 1
+                continue
             alle_tracks.extend(block)
 
             if wl_id:
