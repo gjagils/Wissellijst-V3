@@ -148,7 +148,7 @@ class WissellijstScheduler:
         if schema == "elk_uur":
             return CronTrigger(minute=0)
         elif schema == "elke_3_uur":
-            return IntervalTrigger(hours=3)
+            return CronTrigger(hour="11,14,17,20", minute=0)
         elif schema == "dagelijks":
             return CronTrigger(hour=uur, minute=minuut)
         elif schema == "wekelijks":
