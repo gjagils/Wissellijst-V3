@@ -39,7 +39,7 @@ jobs:
 
       - name: Redeploy Portainer stack
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST \
+          response=$(curl -s -w "\n%{http_code}" -X PUT \
             -H "X-API-Key: ${{ secrets.PORTAINER_API_TOKEN }}" \
             "${{ secrets.PORTAINER_URL }}/api/stacks/${{ secrets.PORTAINER_STACK_ID }}/git/redeploy?endpointId=${{ secrets.PORTAINER_ENDPOINT_ID }}" \
             -H "Content-Type: application/json" \
