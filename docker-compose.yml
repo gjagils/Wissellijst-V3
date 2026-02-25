@@ -6,6 +6,7 @@ services:
     ports:
       - "9090:5000"
     environment:
+      - DATABASE_URL=postgresql://wissellijst:wissellijst@db:5432/wissellijst
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
       - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-https://wissellijst.gerdjan.nl/callback}
@@ -18,7 +19,27 @@ services:
     volumes:
       - wissellijst-data:/app/data
       - wissellijst-secrets:/app/.secrets
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    container_name: wissellijst-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=wissellijst
+      - POSTGRES_PASSWORD=wissellijst
+      - POSTGRES_DB=wissellijst
+    volumes:
+      - wissellijst-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wissellijst"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   wissellijst-data:
   wissellijst-secrets:
+  wissellijst-pgdata:

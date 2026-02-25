@@ -5,8 +5,13 @@ import re
 from config import (
     QUEUE_FILE, HISTORY_FILE,
     load_wissellijsten, get_history_file, get_queue_file,
+    get_wachtrij, save_wachtrij, clear_wachtrij,
+    get_historie_uris, add_historie_bulk,
 )
 from suggest import _parse_history_line, get_spotify_client
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_decade(release_date):
@@ -47,39 +52,33 @@ def _count_expired_tracks(sp, playlist_id, max_days=30):
     return count
 
 
-def rotate_playlist(playlist_id, queue_file=None, history_file=None,
+def rotate_playlist(playlist_id, wl_id=None, queue_file=None, history_file=None,
                     sort_by_age=False):
     """Verwijder de oudste nummers en voeg nieuwe toe uit de wachtrij.
 
     Args:
-        sort_by_age: Als True, sorteer op added_at (oudste eerst) i.p.v.
-                     playlist-positie. Gebruikt voor discovery.
+        wl_id: wissellijst ID (voor DB-backed operaties)
+        sort_by_age: Als True, sorteer op added_at (oudste eerst).
     """
-    queue_file = queue_file or QUEUE_FILE
-    history_file = history_file or HISTORY_FILE
+    # Lees wachtrij via DB of file
+    if wl_id:
+        queue_entries = get_wachtrij(wl_id)
+    else:
+        queue_file = queue_file or QUEUE_FILE
+        queue_entries = []
+        if os.path.exists(queue_file) and os.stat(queue_file).st_size > 0:
+            with open(queue_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    parsed = _parse_history_line(line.strip())
+                    if parsed:
+                        queue_entries.append(parsed)
 
-    if not os.path.exists(queue_file) or os.stat(queue_file).st_size == 0:
-        print("Wachtrij is leeg. Geen update nodig.")
+    if not queue_entries:
+        logger.info("Wachtrij is leeg, geen update nodig")
         return {"status": "leeg", "tekst": "Wachtrij is leeg."}
 
-    # Lees wachtrij - ondersteunt zowel URI-only als volledig formaat
-    new_uris = []
-    new_tracks_detail = []
-    with open(queue_file, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            parsed = _parse_history_line(line)
-            if parsed:
-                new_uris.append(parsed["uri"])
-                new_tracks_detail.append({"artiest": parsed["artiest"], "titel": parsed["titel"]})
-            elif line.startswith("spotify:"):
-                new_uris.append(line)
-
-    if not new_uris:
-        print("Wachtrij is leeg.")
-        return {"status": "leeg", "tekst": "Wachtrij is leeg."}
+    new_uris = [e["uri"] for e in queue_entries]
+    new_tracks_detail = [{"artiest": e["artiest"], "titel": e["titel"]} for e in queue_entries]
 
     block_size = len(new_uris)
     sp = get_spotify_client()
@@ -87,62 +86,67 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None,
     # Haal huidige playlist op
     if sort_by_age:
         current_items = _get_all_playlist_items(sp, playlist_id)
-        # Sorteer op added_at (oudste eerst)
-        current_items.sort(
-            key=lambda x: x.get("added_at", "9999"),
-        )
+        current_items.sort(key=lambda x: x.get("added_at", "9999"))
     else:
         current_items = sp.playlist_items(playlist_id, limit=50)["items"]
 
     # Log de te verwijderen tracks naar historie
     tracks_to_remove = []
     removed_tracks_detail = []
+    historie_entries = []
 
-    with open(history_file, "a", encoding="utf-8") as hf:
-        for item in current_items[:block_size]:
-            track = item["track"]
-            if not track:
-                continue
-            decade = get_decade(track["album"]["release_date"])
-            artist = track["artists"][0]["name"]
-            name = track["name"]
-            uri = track["uri"]
-            added_at = item.get("added_at", "")
-            if sort_by_age and added_at:
-                try:
-                    added_dt = datetime.datetime.fromisoformat(
-                        added_at.replace("Z", "+00:00"))
-                    days_ago = (datetime.datetime.now(datetime.timezone.utc) - added_dt).days
-                    print(f"  [discovery-remove] {artist} - {name} "
-                          f"({days_ago} dagen oud)", flush=True)
-                except (ValueError, TypeError):
-                    pass
-            hf.write(f"{decade} - {artist} - {name} - {uri}\n")
-            tracks_to_remove.append(uri)
-            removed_tracks_detail.append({"artiest": artist, "titel": name})
+    for item in current_items[:block_size]:
+        track = item["track"]
+        if not track:
+            continue
+        decade = get_decade(track["album"]["release_date"])
+        artist = track["artists"][0]["name"]
+        name = track["name"]
+        uri = track["uri"]
+        added_at = item.get("added_at", "")
+
+        if sort_by_age and added_at:
+            try:
+                added_dt = datetime.datetime.fromisoformat(
+                    added_at.replace("Z", "+00:00"))
+                days_ago = (datetime.datetime.now(datetime.timezone.utc) - added_dt).days
+                logger.info("Discovery remove",
+                            extra={"artiest": artist, "titel": name,
+                                   "dagen_oud": days_ago})
+            except (ValueError, TypeError):
+                pass
+
+        historie_entries.append({
+            "categorie": decade, "artiest": artist,
+            "titel": name, "uri": uri,
+        })
+        tracks_to_remove.append(uri)
+        removed_tracks_detail.append({"artiest": artist, "titel": name})
+
+    # Schrijf naar historie
+    if historie_entries:
+        if wl_id:
+            add_historie_bulk(wl_id, historie_entries)
+        else:
+            history_file = history_file or HISTORY_FILE
+            with open(history_file, "a", encoding="utf-8") as hf:
+                for e in historie_entries:
+                    hf.write(f"{e['categorie']} - {e['artiest']} - {e['titel']} - {e['uri']}\n")
 
     # Verwijder oud, voeg nieuw toe
     if tracks_to_remove:
         sp.playlist_remove_all_occurrences_of_items(playlist_id, tracks_to_remove)
         sp.playlist_add_items(playlist_id, new_uris)
-        print("Playlist succesvol geroteerd.")
-
-    # Haal details op voor nieuwe tracks als die URI-only waren
-    if new_uris and not new_tracks_detail:
-        try:
-            tracks_info = sp.tracks(new_uris)
-            for t in tracks_info.get("tracks", []):
-                if t:
-                    new_tracks_detail.append({
-                        "artiest": t["artists"][0]["name"],
-                        "titel": t["name"],
-                    })
-        except Exception:
-            pass
+        logger.info("Playlist geroteerd",
+                     extra={"verwijderd": len(tracks_to_remove),
+                            "toegevoegd": len(new_uris)})
 
     # Wachtrij leegmaken
-    with open(queue_file, "w") as f:
-        f.write("")
+    if wl_id:
+        clear_wachtrij(wl_id)
+    elif queue_file:
+        with open(queue_file, "w") as f:
+            f.write("")
 
     return {
         "status": "ok",
@@ -154,17 +158,18 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None,
     }
 
 
-def _check_queue_decades(sp, queue_file):
+def _check_queue_decades(sp, wl_id=None, queue_file=None):
     """Check of tracks in wachtrij bij het juiste decennium horen. Alleen logging."""
-    if not os.path.exists(queue_file) or os.stat(queue_file).st_size == 0:
-        return
-
-    entries = []
-    with open(queue_file, "r", encoding="utf-8") as f:
-        for line in f:
-            parsed = _parse_history_line(line)
-            if parsed:
-                entries.append(parsed)
+    if wl_id:
+        entries = get_wachtrij(wl_id)
+    else:
+        entries = []
+        if queue_file and os.path.exists(queue_file) and os.stat(queue_file).st_size > 0:
+            with open(queue_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    parsed = _parse_history_line(line)
+                    if parsed:
+                        entries.append(parsed)
 
     if not entries:
         return
@@ -173,7 +178,8 @@ def _check_queue_decades(sp, queue_file):
     try:
         tracks_info = sp.tracks(uris)["tracks"]
     except Exception as exc:
-        print(f"  [decade-check] Kon tracks niet ophalen: {exc}", flush=True)
+        logger.warning("Kon tracks niet ophalen voor decade-check",
+                       extra={"error": str(exc)})
         return
 
     for entry, track in zip(entries, tracks_info):
@@ -183,7 +189,6 @@ def _check_queue_decades(sp, queue_file):
         release_date = track.get("album", {}).get("release_date", "")
         actual_decade = get_decade(release_date)
 
-        # Haal verwacht decennium uit de categorienaam (bijv. "80s" uit "80s heeft in de...")
         match = re.match(r'(\d{2}s)', entry["categorie"])
         expected = match.group(1) if match else None
 
@@ -191,64 +196,54 @@ def _check_queue_decades(sp, queue_file):
         title = entry["titel"]
 
         if expected and actual_decade != "Unknown" and actual_decade != expected:
-            print(f"  [decade-check] ✗ {artist} - {title}: "
-                  f"categorie={expected} maar release={release_date} ({actual_decade})",
-                  flush=True)
+            logger.warning("Decade mismatch",
+                           extra={"artiest": artist, "titel": title,
+                                  "verwacht": expected, "werkelijk": actual_decade})
         elif expected:
-            print(f"  [decade-check] ✓ {artist} - {title}: "
-                  f"{actual_decade} past bij {expected}",
-                  flush=True)
+            logger.debug("Decade OK",
+                         extra={"artiest": artist, "titel": title,
+                                "decade": actual_decade})
 
 
 def rotate_and_regenerate(wl):
-    """Roteer een wissellijst en genereer een nieuw wachtrij-blok.
-
-    Voor discovery: eerst nieuw blok analyseren, dan pas roteren.
-    Voor categorie: eerst roteren, dan nieuw blok genereren.
-
-    Args:
-        wl: wissellijst dict met alle configuratie
-    Returns: dict met resultaten
-    """
+    """Roteer een wissellijst en genereer een nieuw wachtrij-blok."""
     from suggest import generate_block
 
-    queue_file = get_queue_file(wl["id"])
-    history_file = get_history_file(wl["id"])
+    wl_id = wl["id"]
+    queue_file = get_queue_file(wl_id)
+    history_file = get_history_file(wl_id)
     is_discovery = wl.get("type") == "discovery"
 
     if is_discovery:
-        return _rotate_discovery(wl, queue_file, history_file)
+        return _rotate_discovery(wl, wl_id, queue_file, history_file)
 
-    # --- Categorie flow: decade-check, roteer, genereer ---
-
-    # Stap 0: Decade check op wachtrij (logging)
+    # --- Categorie flow ---
     sp = get_spotify_client()
-    print(f"[decade-check] Controleer wachtrij voor {wl.get('naam', wl['id'])}...",
-          flush=True)
-    _check_queue_decades(sp, queue_file)
+    logger.info("Decade check starten",
+                extra={"wissellijst": wl.get("naam", wl_id)})
+    _check_queue_decades(sp, wl_id=wl_id, queue_file=queue_file)
 
     # Stap 1: Roteer
-    result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
-                             history_file=history_file)
+    result = rotate_playlist(wl["playlist_id"], wl_id=wl_id,
+                             queue_file=queue_file, history_file=history_file)
 
     if result["status"] == "leeg":
         return result
 
-    # Stap 2: Genereer nieuw blokje voor de wachtrij
+    # Stap 2: Genereer nieuw blokje
     block = None
     max_retries = 3
     for _ in range(max_retries):
         block = generate_block(sp, wl["playlist_id"],
                                wl.get("categorieen", []),
                                history_file=history_file,
+                               wl_id=wl_id,
                                max_per_artiest=wl.get("max_per_artiest", 0))
         if block:
             break
 
     if block:
-        with open(queue_file, "w", encoding="utf-8") as f:
-            for t in block:
-                f.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
+        save_wachtrij(wl_id, block)
         result["nieuw_blok"] = True
     else:
         result["nieuw_blok"] = False
@@ -257,37 +252,27 @@ def rotate_and_regenerate(wl):
     return result
 
 
-def _rotate_discovery(wl, queue_file, history_file):
-    """Discovery rotatie: eerst analyseren, dan roteren.
-
-    Verwijdert de oudste tracks (op added_at). Tracks ouder dan 30 dagen
-    worden sowieso verwijderd, ook als dat meer is dan blok_grootte.
-
-    1. Bepaal effectieve blokgrootte (rekening houdend met >30 dagen)
-    2. Genereer nieuw blok (scan bronlijsten + GPT scoring)
-    3. Schrijf naar wachtrij
-    4. Roteer playlist (oudste eruit, wachtrij erin)
-    """
+def _rotate_discovery(wl, wl_id, queue_file, history_file):
+    """Discovery rotatie: eerst analyseren, dan roteren."""
     from discovery import generate_discovery_block
 
     sp = get_spotify_client()
     block_size = wl.get("blok_grootte", 10)
 
-    # Stap 0: Tel tracks ouder dan 30 dagen
     expired_count = _count_expired_tracks(sp, wl["playlist_id"], max_days=30)
     effective_size = max(block_size, expired_count)
 
     if expired_count > block_size:
-        print(f"[discovery-rotate] {expired_count} tracks ouder dan 30 dagen "
-              f"(blok_grootte={block_size}), verhoogd naar {effective_size}",
-              flush=True)
+        logger.info("Expired tracks verhogen blokgrootte",
+                     extra={"expired": expired_count, "blok_grootte": block_size,
+                            "effective": effective_size})
 
-    # Stap 1: Genereer nieuw blok
-    print(f"[discovery-rotate] Stap 1: Analyseren voor {wl['naam']} "
-          f"({effective_size} tracks)...", flush=True)
+    logger.info("Discovery analyseren",
+                extra={"wissellijst": wl["naam"], "tracks": effective_size})
     block = generate_discovery_block(
         sp, wl, history_file,
         block_size=effective_size,
+        wl_id=wl_id,
     )
 
     if not block:
@@ -296,36 +281,26 @@ def _rotate_discovery(wl, queue_file, history_file):
             "tekst": "Kon geen nieuw blok genereren uit bronlijsten.",
         }
 
-    # Stap 2: Schrijf naar wachtrij
-    with open(queue_file, "w", encoding="utf-8") as f:
-        for t in block:
-            f.write(f"{t['categorie']} - {t['artiest']} - "
-                    f"{t['titel']} - {t['uri']}\n")
-    print(f"[discovery-rotate] Stap 2: {len(block)} tracks in wachtrij",
-          flush=True)
+    save_wachtrij(wl_id, block)
+    logger.info("Wachtrij gevuld", extra={"tracks": len(block)})
 
-    # Stap 3: Roteer (sort_by_age=True: oudste op added_at eerst)
-    print(f"[discovery-rotate] Stap 3: Roteren (oudste eerst)...", flush=True)
-    result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
-                             history_file=history_file, sort_by_age=True)
+    logger.info("Discovery roteren (oudste eerst)")
+    result = rotate_playlist(wl["playlist_id"], wl_id=wl_id,
+                             queue_file=queue_file, history_file=history_file,
+                             sort_by_age=True)
     result["nieuw_blok"] = True
     return result
 
 
 if __name__ == "__main__":
-    # Roteer alle wissellijsten
     data = load_wissellijsten()
     if not data["wissellijsten"]:
-        # Fallback naar oude env-var manier
         playlist_id = os.environ.get("SPOTIFY_PLAYLIST_ID", "")
         if not playlist_id:
-            print("Geen wissellijsten gevonden en SPOTIFY_PLAYLIST_ID niet ingesteld.")
+            logger.error("Geen wissellijsten gevonden en SPOTIFY_PLAYLIST_ID niet ingesteld.")
             exit(1)
         rotate_playlist(playlist_id)
     else:
         for wl in data["wissellijsten"]:
-            print(f"Roteer: {wl['naam']}...")
-            queue_file = get_queue_file(wl["id"])
-            history_file = get_history_file(wl["id"])
-            rotate_playlist(wl["playlist_id"], queue_file=queue_file,
-                            history_file=history_file)
+            logger.info("Roteer wissellijst", extra={"naam": wl["naam"]})
+            rotate_and_regenerate(wl)

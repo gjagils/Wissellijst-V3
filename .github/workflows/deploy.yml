@@ -41,6 +41,7 @@ jobs:
         run: |
           ENV_JSON=$(cat <<ENVEOF
           [
+            {"name": "DATABASE_URL", "value": "postgresql://wissellijst:wissellijst@db:5432/wissellijst"},
             {"name": "SPOTIFY_CLIENT_ID", "value": "${{ secrets.SPOTIFY_CLIENT_ID }}"},
             {"name": "SPOTIFY_CLIENT_SECRET", "value": "${{ secrets.SPOTIFY_CLIENT_SECRET }}"},
             {"name": "SPOTIFY_REDIRECT_URI", "value": "https://wissellijst.gerdjan.nl/callback"},
