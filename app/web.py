@@ -4,12 +4,23 @@ import uuid
 import threading
 import datetime
 import time
+import atexit
+
 from flask import Flask, render_template, request, jsonify, redirect
 from spotipy.oauth2 import SpotifyOAuth
 
+# Setup logging FIRST (before other imports that use it)
+from logging_config import setup_logging, get_logger
+setup_logging()
+logger = get_logger(__name__)
+
 from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
+    save_wissellijst, delete_wissellijst,
     get_history_file, get_queue_file, get_smaakprofiel_file,
+    get_historie, delete_historie_entry, clear_historie,
+    get_wachtrij, save_wachtrij,
+    get_smaakprofiel, save_smaakprofiel,
     DATA_DIR, HISTORY_FILE,
     SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
     SPOTIFY_SCOPE, CACHE_PATH,
@@ -20,6 +31,7 @@ from discovery import (
 )
 from automation import rotate_and_regenerate
 from mail import mail_configured, send_rotation_mail
+from validators import validate_wissellijst_config
 
 app = Flask(__name__)
 
@@ -27,10 +39,91 @@ app = Flask(__name__)
 _tasks = {}
 
 
+# --- Database & migratie init ---
+
+def _run_alembic_migrations():
+    """Draai Alembic migraties (upgrade to head)."""
+    try:
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        alembic_cfg.set_main_option(
+            "script_location",
+            os.path.join(os.path.dirname(__file__), "alembic"),
+        )
+        # DATABASE_URL uit environment
+        db_url = os.getenv("DATABASE_URL", "")
+        if db_url:
+            alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Alembic migraties uitgevoerd")
+    except Exception as e:
+        logger.warning("Alembic migraties overgeslagen", extra={"error": str(e)})
+
+
+def _init_database():
+    """Initialiseer database en draai migratie als nodig."""
+    try:
+        from db.session import init_db, db_available, get_session
+        from db.migrate_data import needs_migration, migrate_all
+
+        success = init_db()
+        if not success:
+            logger.warning("Database niet geconfigureerd, fallback naar bestanden")
+            return False
+
+        logger.info("Database verbinding OK")
+
+        # Alembic migraties draaien (schema updates)
+        _run_alembic_migrations()
+
+        # Auto-migratie als DB leeg is en bestanden bestaan
+        with get_session() as session:
+            if needs_migration(session):
+                logger.info("Data migratie starten (DB leeg, bestanden gevonden)")
+                migrate_all(session)
+                logger.info("Data migratie voltooid")
+
+        return True
+    except Exception as e:
+        logger.error("Database initialisatie mislukt", extra={"error": str(e)})
+        return False
+
+
+# --- Scheduler init ---
+
+_wl_scheduler = None
+
+def _init_scheduler():
+    """Start APScheduler en laad jobs."""
+    global _wl_scheduler
+    try:
+        from scheduler import get_scheduler
+        _wl_scheduler = get_scheduler()
+        _wl_scheduler.start()
+        _wl_scheduler.reload_jobs()
+        logger.info("APScheduler gestart")
+    except Exception as e:
+        logger.error("Scheduler start mislukt", extra={"error": str(e)})
+
+
+# --- Startup ---
+
+db_ok = _init_database()
+_init_scheduler()
+
+
 @app.route("/health")
 def health():
     """Health check endpoint voor deployment verificatie."""
-    return jsonify({"status": "ok", "app": "wissellijst", "version": "3.0"})
+    return jsonify({
+        "status": "ok",
+        "app": "wissellijst",
+        "version": "3.1",
+        "database": db_ok,
+    })
 
 
 def _get_auth_manager():
@@ -65,7 +158,6 @@ def callback():
 
     if error:
         return jsonify({"error": error}), 400
-
     if not code:
         return jsonify({"error": "Geen code ontvangen"}), 400
 
@@ -156,12 +248,8 @@ def api_smaakprofiel_generiek():
 @app.route("/api/wissellijsten/<lijst_id>/smaakprofiel", methods=["GET"])
 def api_smaakprofiel_get(lijst_id):
     """Haal het opgeslagen smaakprofiel op voor een wissellijst."""
-    profiel_file = get_smaakprofiel_file(lijst_id)
-    if os.path.exists(profiel_file):
-        with open(profiel_file, 'r', encoding='utf-8') as f:
-            profiel = f.read()
-        return jsonify({"profiel": profiel})
-    return jsonify({"profiel": ""})
+    profiel = get_smaakprofiel(lijst_id)
+    return jsonify({"profiel": profiel})
 
 
 @app.route("/api/wissellijsten/<lijst_id>/smaakprofiel/ophalen", methods=["POST"])
@@ -172,31 +260,24 @@ def api_smaakprofiel_ophalen(lijst_id):
         spotify_profiel = build_taste_profile(sp)
 
         # Lees bestaand profiel om eigen toevoegingen te behouden
-        profiel_file = get_smaakprofiel_file(lijst_id)
+        bestaand = get_smaakprofiel(lijst_id)
         eigen_sectie = ""
-        if os.path.exists(profiel_file):
-            with open(profiel_file, 'r', encoding='utf-8') as f:
-                bestaand = f.read()
-            # Eigen toevoegingen staan na de marker
-            marker = "=== EIGEN TOEVOEGINGEN ==="
-            if marker in bestaand:
-                eigen_sectie = bestaand[bestaand.index(marker):]
+        marker = "=== EIGEN TOEVOEGINGEN ==="
+        if marker in bestaand:
+            eigen_sectie = bestaand[bestaand.index(marker):]
 
         # Combineer Spotify + eigen
         volledig = spotify_profiel
         if eigen_sectie:
             volledig += "\n\n" + eigen_sectie
 
-        with open(profiel_file, 'w', encoding='utf-8') as f:
-            f.write(volledig)
+        save_smaakprofiel(lijst_id, volledig)
 
         # Update ook in wissellijst config
-        data = load_wissellijsten()
-        for i, w in enumerate(data["wissellijsten"]):
-            if w["id"] == lijst_id:
-                data["wissellijsten"][i]["smaakprofiel"] = volledig
-                break
-        save_wissellijsten(data)
+        wl = get_wissellijst(lijst_id)
+        if wl:
+            wl["smaakprofiel"] = volledig
+            save_wissellijst(wl)
 
         return jsonify({"profiel": volledig})
     except Exception as e:
@@ -210,17 +291,13 @@ def api_smaakprofiel_opslaan(lijst_id):
         body = request.get_json()
         profiel = body.get("profiel", "")
 
-        profiel_file = get_smaakprofiel_file(lijst_id)
-        with open(profiel_file, 'w', encoding='utf-8') as f:
-            f.write(profiel)
+        save_smaakprofiel(lijst_id, profiel)
 
         # Update ook in wissellijst config
-        data = load_wissellijsten()
-        for i, w in enumerate(data["wissellijsten"]):
-            if w["id"] == lijst_id:
-                data["wissellijsten"][i]["smaakprofiel"] = profiel
-                break
-        save_wissellijsten(data)
+        wl = get_wissellijst(lijst_id)
+        if wl:
+            wl["smaakprofiel"] = profiel
+            save_wissellijst(wl)
 
         return jsonify({"ok": True})
     except Exception as e:
@@ -238,36 +315,41 @@ def api_wissellijsten():
 def api_wissellijst_opslaan():
     """Maak een nieuwe wissellijst aan of update een bestaande."""
     body = request.json
-    data = load_wissellijsten()
+
+    # Validatie
+    is_valid, errors = validate_wissellijst_config(body)
+    if not is_valid:
+        return jsonify({"error": "; ".join(errors)}), 400
 
     lijst_id = body.get("id")
-    if lijst_id:
-        # Update bestaande
-        for i, wl in enumerate(data["wissellijsten"]):
-            if wl["id"] == lijst_id:
-                data["wissellijsten"][i] = body
-                break
-    else:
-        # Nieuwe aanmaken
+    if not lijst_id:
         body["id"] = str(uuid.uuid4())[:8]
-        data["wissellijsten"].append(body)
 
-    # Sla smaakprofiel ook op in apart bestand als het er is
+    # Sla smaakprofiel ook apart op als het er is
     if body.get("smaakprofiel"):
-        profiel_file = get_smaakprofiel_file(body["id"])
-        with open(profiel_file, 'w', encoding='utf-8') as f:
-            f.write(body["smaakprofiel"])
+        save_smaakprofiel(body["id"], body["smaakprofiel"])
 
-    save_wissellijsten(data)
-    return jsonify(body)
+    result = save_wissellijst(body)
+
+    # Update scheduler job
+    if _wl_scheduler:
+        _wl_scheduler.update_job(body)
+
+    return jsonify(result or body)
 
 
 @app.route("/api/wissellijsten/<lijst_id>", methods=["DELETE"])
 def api_wissellijst_verwijderen(lijst_id):
     """Verwijder een wissellijst-configuratie."""
-    data = load_wissellijsten()
-    data["wissellijsten"] = [wl for wl in data["wissellijsten"] if wl["id"] != lijst_id]
-    save_wissellijsten(data)
+    delete_wissellijst(lijst_id)
+
+    # Verwijder scheduler job
+    if _wl_scheduler:
+        job_id = f"wl_{lijst_id}"
+        existing = _wl_scheduler.scheduler.get_job(job_id)
+        if existing:
+            existing.remove()
+
     return jsonify({"ok": True})
 
 
@@ -300,24 +382,16 @@ def api_wissellijst_herstarten(lijst_id):
                     uris.append(item["track"]["uri"])
 
         if uris:
-            # Spotify max 100 per keer
             for i in range(0, len(uris), 100):
                 sp.playlist_remove_all_occurrences_of_items(
                     playlist_id, uris[i:i + 100])
     except Exception as e:
         return jsonify({"error": f"Kon playlist niet leeghalen: {e}"}), 500
 
-    # Historie leegmaken
-    history_file = get_history_file(lijst_id)
-    if os.path.exists(history_file):
-        with open(history_file, "w") as f:
-            f.write("")
-
-    # Wachtrij leegmaken
-    queue_file = get_queue_file(lijst_id)
-    if os.path.exists(queue_file):
-        with open(queue_file, "w") as f:
-            f.write("")
+    # Historie en wachtrij leegmaken
+    clear_historie(lijst_id)
+    from config import clear_wachtrij
+    clear_wachtrij(lijst_id)
 
     return jsonify({
         "ok": True,
@@ -362,6 +436,7 @@ def api_vullen():
                     categorieen=wl.get("categorieen", []),
                     history_file=get_history_file(lijst_id),
                     queue_file=get_queue_file(lijst_id),
+                    wl_id=lijst_id,
                     max_per_artiest=wl.get("max_per_artiest", 0),
                     aantal_blokken=aantal_blokken,
                     on_progress=on_progress,
@@ -398,16 +473,7 @@ def api_historie(lijst_id):
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
-    history_file = get_history_file(lijst_id)
-
-    entries = []
-    if os.path.exists(history_file):
-        with open(history_file, "r", encoding="utf-8") as f:
-            for line in f:
-                parsed = _parse_history_line(line)
-                if parsed:
-                    entries.append(parsed)
-
+    entries = get_historie(lijst_id)
     return jsonify(entries)
 
 
@@ -418,34 +484,35 @@ def api_historie_verwijderen(lijst_id, entry_index):
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
-    history_file = get_history_file(lijst_id)
-    if not os.path.exists(history_file):
-        return jsonify({"error": "Geen historie gevonden"}), 404
+    success = delete_historie_entry(lijst_id, entry_index)
+    if not success:
+        # Fallback naar file-based verwijdering
+        history_file = get_history_file(lijst_id)
+        if not os.path.exists(history_file):
+            return jsonify({"error": "Geen historie gevonden"}), 404
 
-    # Lees alle regels
-    with open(history_file, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+        with open(history_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
 
-    # Parse en filter: vind de N-de geldige entry
-    valid_index = 0
-    new_lines = []
-    removed = False
-    for line in lines:
-        parsed = _parse_history_line(line)
-        if parsed:
-            if valid_index == entry_index:
-                removed = True  # Skip deze regel
+        valid_index = 0
+        new_lines = []
+        removed = False
+        for line in lines:
+            parsed = _parse_history_line(line)
+            if parsed:
+                if valid_index == entry_index:
+                    removed = True
+                else:
+                    new_lines.append(line)
+                valid_index += 1
             else:
                 new_lines.append(line)
-            valid_index += 1
-        else:
-            new_lines.append(line)
 
-    if not removed:
-        return jsonify({"error": "Index niet gevonden"}), 404
+        if not removed:
+            return jsonify({"error": "Index niet gevonden"}), 404
 
-    with open(history_file, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
+        with open(history_file, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
 
     return jsonify({"ok": True})
 
@@ -457,35 +524,11 @@ def api_historie_wissen(lijst_id):
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
-    history_file = get_history_file(lijst_id)
-    if os.path.exists(history_file):
-        os.remove(history_file)
-
+    clear_historie(lijst_id)
     return jsonify({"ok": True, "tekst": f"Historie van '{wl['naam']}' gewist."})
 
 
 # --- Wachtrij ---
-
-def _read_queue(lijst_id):
-    """Lees wachtrij-bestand en return lijst van dicts."""
-    queue_file = get_queue_file(lijst_id)
-    entries = []
-    if os.path.exists(queue_file):
-        with open(queue_file, "r", encoding="utf-8") as f:
-            for line in f:
-                parsed = _parse_history_line(line)
-                if parsed:
-                    entries.append(parsed)
-    return entries
-
-
-def _write_queue(lijst_id, entries):
-    """Schrijf wachtrij-entries naar bestand."""
-    queue_file = get_queue_file(lijst_id)
-    with open(queue_file, "w", encoding="utf-8") as f:
-        for t in entries:
-            f.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
-
 
 @app.route("/api/wissellijsten/<lijst_id>/wachtrij")
 def api_wachtrij(lijst_id):
@@ -493,7 +536,7 @@ def api_wachtrij(lijst_id):
     wl = get_wissellijst(lijst_id)
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
-    return jsonify(_read_queue(lijst_id))
+    return jsonify(get_wachtrij(lijst_id))
 
 
 @app.route("/api/wissellijsten/<lijst_id>/wachtrij/vervang", methods=["POST"])
@@ -511,7 +554,7 @@ def api_wachtrij_vervang(lijst_id):
     if not artiest or not titel:
         return jsonify({"error": "Artiest en titel zijn verplicht"}), 400
 
-    entries = _read_queue(lijst_id)
+    entries = get_wachtrij(lijst_id)
     if entry_index is None or entry_index < 0 or entry_index >= len(entries):
         return jsonify({"error": "Ongeldige index"}), 400
 
@@ -533,7 +576,7 @@ def api_wachtrij_vervang(lijst_id):
         "uri": uri,
     }
 
-    _write_queue(lijst_id, entries)
+    save_wachtrij(lijst_id, entries)
     return jsonify(entries)
 
 
@@ -566,6 +609,7 @@ def api_wachtrij_genereer(lijst_id):
                 block = generate_discovery_block(
                     sp, wl, history_file,
                     block_size=wl.get("blok_grootte", 10),
+                    wl_id=lijst_id,
                 )
             else:
                 max_retries = 3
@@ -574,13 +618,14 @@ def api_wachtrij_genereer(lijst_id):
                     block = generate_block(
                         sp, wl["playlist_id"], wl.get("categorieen", []),
                         history_file=history_file,
+                        wl_id=lijst_id,
                         max_per_artiest=wl.get("max_per_artiest", 0),
                     )
                     if block:
                         break
 
             if block:
-                _write_queue(lijst_id, block)
+                save_wachtrij(lijst_id, block)
                 _tasks[task_id]["status"] = "klaar"
                 _tasks[task_id]["voortgang"] = 100
                 _tasks[task_id]["tekst"] = f"Wachtrij aangemaakt: {len(block)} tracks"
@@ -603,11 +648,7 @@ def api_wachtrij_genereer(lijst_id):
 
 @app.route("/api/wissellijsten/<lijst_id>/roteren", methods=["POST"])
 def api_roteren(lijst_id):
-    """Start een rotatie voor een wissellijst (async).
-
-    Discovery: eerst analyseren (nieuw blok), dan roteren.
-    Categorie: roteren, dan nieuw blok genereren.
-    """
+    """Start een rotatie voor een wissellijst (async)."""
     wl = get_wissellijst(lijst_id)
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
@@ -619,21 +660,12 @@ def api_roteren(lijst_id):
 
     def run():
         try:
-            if is_discovery:
-                # Discovery: eerst analyseren, dan roteren
-                _tasks[task_id]["voortgang"] = 10
-                _tasks[task_id]["tekst"] = "Bronlijsten scannen & analyseren..."
+            _tasks[task_id]["voortgang"] = 30
+            _tasks[task_id]["tekst"] = ("Bronlijsten scannen & analyseren..."
+                                        if is_discovery
+                                        else "Oudste blok verwijderen en wachtrij toevoegen...")
 
-                result = rotate_and_regenerate(wl)
-
-                _tasks[task_id]["voortgang"] = 90
-                _tasks[task_id]["tekst"] = "Rotatie voltooien..."
-            else:
-                # Categorie: roteer + genereer nieuw
-                _tasks[task_id]["voortgang"] = 30
-                _tasks[task_id]["tekst"] = "Oudste blok verwijderen en wachtrij toevoegen..."
-
-                result = rotate_and_regenerate(wl)
+            result = rotate_and_regenerate(wl)
 
             _tasks[task_id]["voortgang"] = 100
             _tasks[task_id]["status"] = "klaar"
@@ -641,34 +673,24 @@ def api_roteren(lijst_id):
             _tasks[task_id]["resultaat"] = result
 
             # Update laatste rotatie in config
-            data = load_wissellijsten()
-            for i, w in enumerate(data["wissellijsten"]):
-                if w["id"] == lijst_id:
-                    data["wissellijsten"][i]["laatste_rotatie"] = datetime.datetime.now().isoformat()
-                    break
-            save_wissellijsten(data)
+            wl["laatste_rotatie"] = datetime.datetime.now().isoformat()
+            save_wissellijst(wl)
 
             # Stuur e-mail notificatie als ingeschakeld
             if wl.get("mail_na_rotatie") and wl.get("mail_adres") and result.get("status") == "ok":
-                print(f"[Mail] Rotatie-mail versturen naar {wl['mail_adres']} voor '{wl['naam']}'...", flush=True)
+                logger.info("Rotatie-mail versturen",
+                            extra={"naar": wl["mail_adres"], "wissellijst": wl["naam"]})
                 send_rotation_mail(
                     wl["mail_adres"], wl["naam"],
                     result.get("verwijderd_detail", []),
                     result.get("toegevoegd_detail", []),
                 )
-            else:
-                reason = []
-                if not wl.get("mail_na_rotatie"):
-                    reason.append("mail_na_rotatie uit")
-                if not wl.get("mail_adres"):
-                    reason.append("geen mail_adres")
-                if result.get("status") != "ok":
-                    reason.append(f"status={result.get('status')}")
-                print(f"[Mail] Geen mail verstuurd voor '{wl.get('naam')}': {', '.join(reason)}", flush=True)
 
         except Exception as e:
             _tasks[task_id]["status"] = "fout"
             _tasks[task_id]["tekst"] = str(e)
+            logger.error("Rotatie mislukt", extra={"error": str(e),
+                                                    "wissellijst_id": lijst_id})
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
@@ -676,120 +698,75 @@ def api_roteren(lijst_id):
     return jsonify({"task_id": task_id})
 
 
-# --- Rotatie Scheduler ---
+# --- Rotatie historie (NIEUW) ---
 
-def _check_schedules():
-    """Background thread die elke 60 seconden controleert of er geroteerd moet worden."""
-    while True:
-        time.sleep(60)
-        try:
-            now = datetime.datetime.now()
-            data = load_wissellijsten()
+@app.route("/api/wissellijsten/<lijst_id>/rotaties")
+def api_rotaties(lijst_id):
+    """Haal rotatie-runs op voor een wissellijst (audit trail)."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
-            for wl in data["wissellijsten"]:
-                schema = wl.get("rotatie_schema", "uit")
-                if schema == "uit":
-                    continue
+    try:
+        from db.session import db_available, get_session
+        from db.models import RotatieRun, RotatieWijziging
 
-                laatste = wl.get("laatste_rotatie", "")
+        if not db_available():
+            return jsonify([])
 
-                if schema == "elk_uur":
-                    # Elk uur roteren, op minuut 0
-                    if now.minute != 0:
-                        continue
+        with get_session() as session:
+            runs = (session.query(RotatieRun)
+                    .filter_by(wissellijst_id=lijst_id)
+                    .order_by(RotatieRun.started_at.desc())
+                    .limit(50)
+                    .all())
 
-                    # Niet dubbel roteren in hetzelfde uur
-                    if laatste:
-                        try:
-                            laatste_dt = datetime.datetime.fromisoformat(laatste)
-                            if (laatste_dt.date() == now.date()
-                                    and laatste_dt.hour == now.hour):
-                                continue
-                        except ValueError:
-                            pass
+            result = []
+            for run in runs:
+                wijzigingen = (session.query(RotatieWijziging)
+                               .filter_by(run_id=run.id)
+                               .all())
 
-                elif schema == "elke_3_uur":
-                    # Elke 3 uur roteren, op minuut 0
-                    if now.minute != 0:
-                        continue
+                result.append({
+                    "id": run.id,
+                    "triggered_by": run.triggered_by,
+                    "status": run.status,
+                    "started_at": run.started_at.isoformat() if run.started_at else None,
+                    "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                    "tracks_verwijderd": run.tracks_verwijderd,
+                    "tracks_toegevoegd": run.tracks_toegevoegd,
+                    "error_message": run.error_message,
+                    "wijzigingen": [
+                        {
+                            "type": w.type,
+                            "artiest": w.artiest,
+                            "titel": w.titel,
+                        }
+                        for w in wijzigingen
+                    ],
+                })
 
-                    # Check of er minstens 3 uur verstreken zijn
-                    if laatste:
-                        try:
-                            laatste_dt = datetime.datetime.fromisoformat(laatste)
-                            if (now - laatste_dt).total_seconds() < 3 * 3600:
-                                continue
-                        except ValueError:
-                            pass
-                else:
-                    tijdstip = wl.get("rotatie_tijdstip", "08:00")
-                    try:
-                        uur, minuut = map(int, tijdstip.split(":"))
-                    except ValueError:
-                        continue
-
-                    # Alleen uitvoeren op het juiste tijdstip (binnen de minuut)
-                    if now.hour != uur or now.minute != minuut:
-                        continue
-
-                    # Niet dubbel roteren op dezelfde dag
-                    if laatste:
-                        try:
-                            laatste_dt = datetime.datetime.fromisoformat(laatste)
-                            if laatste_dt.date() == now.date():
-                                continue
-                        except ValueError:
-                            pass
-
-                    # Bij wekelijks: check de dag
-                    if schema == "wekelijks":
-                        dag = wl.get("rotatie_dag", 0)
-                        if now.weekday() != dag:
-                            continue
-
-                # Roteer!
-                print(f"[Scheduler] Rotatie starten voor: {wl['naam']}")
-                try:
-                    result = rotate_and_regenerate(wl)
-
-                    # Update laatste rotatie
-                    wl["laatste_rotatie"] = now.isoformat()
-                    for i, w in enumerate(data["wissellijsten"]):
-                        if w["id"] == wl["id"]:
-                            data["wissellijsten"][i] = wl
-                            break
-                    save_wissellijsten(data)
-
-                    print(f"[Scheduler] Rotatie klaar: {wl['naam']} - {result['tekst']}")
-
-                    # Stuur e-mail notificatie als ingeschakeld
-                    if wl.get("mail_na_rotatie") and wl.get("mail_adres") and result.get("status") == "ok":
-                        print(f"[Scheduler] Rotatie-mail versturen naar {wl['mail_adres']} voor '{wl['naam']}'...", flush=True)
-                        send_rotation_mail(
-                            wl["mail_adres"], wl["naam"],
-                            result.get("verwijderd_detail", []),
-                            result.get("toegevoegd_detail", []),
-                        )
-                    else:
-                        reason = []
-                        if not wl.get("mail_na_rotatie"):
-                            reason.append("mail_na_rotatie uit")
-                        if not wl.get("mail_adres"):
-                            reason.append("geen mail_adres")
-                        if result.get("status") != "ok":
-                            reason.append(f"status={result.get('status')}")
-                        print(f"[Scheduler] Geen mail verstuurd voor '{wl['naam']}': {', '.join(reason)}", flush=True)
-
-                except Exception as e:
-                    print(f"[Scheduler] Rotatie fout voor {wl['naam']}: {e}")
-
-        except Exception as e:
-            print(f"[Scheduler] Fout: {e}")
+            return jsonify(result)
+    except ImportError:
+        return jsonify([])
 
 
-# Start scheduler als daemon thread
-_scheduler = threading.Thread(target=_check_schedules, daemon=True)
-_scheduler.start()
+# --- Scheduler info ---
+
+@app.route("/api/scheduler/jobs")
+def api_scheduler_jobs():
+    """Lijst van geplande scheduler jobs."""
+    if _wl_scheduler:
+        return jsonify(_wl_scheduler.get_jobs())
+    return jsonify([])
+
+
+# --- Shutdown ---
+
+@atexit.register
+def _shutdown():
+    if _wl_scheduler:
+        _wl_scheduler.shutdown()
 
 
 if __name__ == "__main__":

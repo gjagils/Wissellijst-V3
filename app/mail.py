@@ -4,6 +4,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def mail_configured():
@@ -12,24 +15,18 @@ def mail_configured():
 
 
 def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
-    """Stuur een e-mail met de rotatie-samenvatting.
-
-    Args:
-        to_address: e-mailadres van de ontvanger
-        wissellijst_naam: naam van de wissellijst
-        verwijderd: lijst van dicts met 'artiest' en 'titel'
-        toegevoegd: lijst van dicts met 'artiest' en 'titel'
-    """
+    """Stuur een e-mail met de rotatie-samenvatting."""
     if not mail_configured():
-        print(f"[Mail] SMTP niet geconfigureerd (host={SMTP_HOST!r}, user={SMTP_USER!r}, pass={'***' if SMTP_PASS else None})", flush=True)
+        logger.warning("SMTP niet geconfigureerd",
+                       extra={"host": SMTP_HOST or "leeg",
+                              "user": SMTP_USER or "leeg"})
         return
     if not to_address:
-        print("[Mail] Geen ontvanger-adres opgegeven, mail overgeslagen", flush=True)
+        logger.warning("Geen ontvanger-adres opgegeven, mail overgeslagen")
         return
 
     subject = f"Rotatie voltooid: {wissellijst_naam}"
 
-    # Bouw HTML body
     verwijderd_html = "".join(
         f"<li>{t['artiest']} &mdash; {t['titel']}</li>" for t in verwijderd
     )
@@ -56,7 +53,6 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
 </body>
 </html>"""
 
-    # Platte tekst variant
     verwijderd_tekst = "\n".join(
         f"  - {t['artiest']} - {t['titel']}" for t in verwijderd
     )
@@ -81,6 +77,8 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
             server.starttls()
             server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
-        print(f"[Mail] Rotatie-mail verstuurd naar {to_address}", flush=True)
+        logger.info("Rotatie-mail verstuurd",
+                     extra={"naar": to_address, "wissellijst": wissellijst_naam})
     except Exception as e:
-        print(f"[Mail] Fout bij versturen naar {to_address}: {e}", flush=True)
+        logger.error("Fout bij mail versturen",
+                     extra={"naar": to_address, "error": str(e)})
