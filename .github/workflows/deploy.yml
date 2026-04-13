@@ -15,7 +15,6 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: portainer
 
     steps:
       - name: Checkout
