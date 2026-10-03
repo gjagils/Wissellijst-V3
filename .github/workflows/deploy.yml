@@ -62,5 +62,6 @@ jobs:
               \"prune\": false,
               \"env\": $CURRENT_ENV
             }" \
-            "$PORTAINER_URL/api/stacks/$PORTAINER_STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID"
+            "$PORTAINER_URL/api/stacks/$PORTAINER_STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID" \
+            | jq '{Id, Name, Status, message}'   # nooit de volledige stack loggen: die bevat de env-secrets
           echo "Deploy complete."
