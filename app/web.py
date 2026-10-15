@@ -7,6 +7,7 @@ import time
 import atexit
 
 from flask import Flask, render_template, request, jsonify, redirect
+from markupsafe import escape
 from spotipy.oauth2 import SpotifyOAuth
 
 # Setup logging FIRST (before other imports that use it)
@@ -162,7 +163,21 @@ def callback():
         return jsonify({"error": "Geen code ontvangen"}), 400
 
     auth_manager = _get_auth_manager()
-    auth_manager.get_access_token(code)
+    try:
+        # check_cache=False is essentieel: met de default probeert spotipy
+        # EERST het oude token uit .cache te verversen. Is dat ingetrokken,
+        # dan faalt dat en wordt de nieuwe code nooit ingewisseld, waardoor
+        # opnieuw inloggen onmogelijk is.
+        auth_manager.get_access_token(code, as_dict=False, check_cache=False)
+    except Exception as e:
+        logger.error("Spotify koppelen mislukt", extra={"error": str(e)})
+        return (
+            "<h2>Koppelen met Spotify mislukt</h2>"
+            f"<p>{escape(str(e))}</p>"
+            "<p><a href=\"/login\">Opnieuw proberen</a></p>",
+            500,
+        )
+    logger.info("Spotify gekoppeld")
     return redirect("/")
 
 
