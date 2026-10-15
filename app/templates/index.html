@@ -111,6 +111,16 @@
         }
         .melding-ok { background: #1a3a2a; color: #1db954; }
         .melding-fout { background: #3a1a1a; color: #e74c3c; }
+        .banner {
+            display: flex; justify-content: space-between; align-items: center; gap: 12px;
+            padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9em;
+        }
+        .banner-fout { background: #3a1a1a; color: #ffb4a8; border: 1px solid #e74c3c; }
+        .banner-waarschuwing { background: #3a2e1a; color: #ffd98a; border: 1px solid #f39c12; }
+        .banner .btn { white-space: nowrap; }
+        .topbar { display: flex; justify-content: space-between; align-items: baseline; }
+        .topbar a { color: #888; font-size: 0.8em; text-decoration: none; }
+        .topbar a:hover { color: #e0e0e0; }
 
         .detail-header {
             display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
@@ -203,8 +213,12 @@
     </style>
 </head>
 <body>
-    <h1 style="cursor:pointer;" onclick="naarOverzicht()">Wissellijst</h1>
+    <div class="topbar">
+        <h1 style="cursor:pointer;" onclick="naarOverzicht()">Wissellijst</h1>
+        <a href="/auth/logout" id="logout-link" class="hidden">Uitloggen</a>
+    </div>
 
+    <div id="status-banner" class="hidden"></div>
     <div id="melding" class="hidden"></div>
 
     <!-- ============ VIEW: OVERZICHT ============ -->
@@ -486,7 +500,40 @@
 
         // --- Init ---
         async function init() {
+            await laadStatus();
             await Promise.all([laadPlaylists(), laadWissellijsten()]);
+        }
+
+        // --- Status-banner (Spotify-koppeling, beveiliging, laatste fout) ---
+        async function laadStatus() {
+            const el = document.getElementById('status-banner');
+            try {
+                const res = await fetch('/api/status');
+                if (res.status === 401) { window.location.href = '/auth/login'; return; }
+                const s = await res.json();
+                document.getElementById('logout-link').classList.toggle('hidden', !s.auth_enabled);
+
+                let html = '', cls = '';
+                if (!s.spotify.connected) {
+                    cls = 'banner-fout';
+                    html = `<span>Spotify is niet gekoppeld${s.spotify.error ? ': ' + s.spotify.error : ''}. Rotaties falen tot je opnieuw koppelt.</span>
+                            <a class="btn btn-primary" href="/login">Koppelen</a>`;
+                } else if (!s.auth_enabled) {
+                    cls = 'banner-waarschuwing';
+                    html = `<span>De app is niet beveiligd. Zet <code>APP_PASSWORD</code> in de omgeving van de stack.</span>`;
+                } else if (s.laatste_fout) {
+                    cls = 'banner-waarschuwing';
+                    html = `<span>Laatste rotatie van <b>${s.laatste_fout.wissellijst}</b> mislukte (${s.laatste_fout.soort}): ${s.laatste_fout.fout}</span>`;
+                }
+                if (html) {
+                    el.className = 'banner ' + cls;
+                    el.innerHTML = html;
+                } else {
+                    el.className = 'hidden';
+                }
+            } catch (e) {
+                el.className = 'hidden';
+            }
         }
 
         // --- Navigation ---
@@ -530,14 +577,15 @@
         async function laadPlaylists() {
             try {
                 const res = await fetch('/api/playlists');
-                if (res.status === 401) {
-                    // Token verlopen of scope gewijzigd - redirect naar login
-                    window.location.href = '/login';
+                const data = await res.json();
+                if (res.status === 401 || data.error === 'auth_required') {
+                    // Spotify niet gekoppeld: de status-banner toont de knop "Koppelen".
+                    playlists = [];
+                    vulPlaylistSelect();
                     return;
                 }
-                const data = await res.json();
-                if (data.error === 'auth_required') {
-                    window.location.href = '/login';
+                if (data.error) {
+                    toonMelding('Kan Spotify playlists niet laden: ' + data.error, 'fout');
                     return;
                 }
                 playlists = data;

@@ -14,6 +14,27 @@ def mail_configured():
     return bool(SMTP_HOST and SMTP_USER and SMTP_PASS)
 
 
+def _send(msg, to_address):
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+
+
+def send_alert_mail(to_address, subject, plain_text):
+    """Stuur een platte alarm-mail (bijv. bij een mislukte rotatie)."""
+    if not mail_configured():
+        logger.warning("SMTP niet geconfigureerd, alarm-mail overgeslagen")
+        return False
+    msg = MIMEText(plain_text, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = MAIL_FROM or SMTP_USER
+    msg["To"] = to_address
+    _send(msg, to_address)
+    logger.info("Alarm-mail verstuurd", extra={"naar": to_address, "onderwerp": subject})
+    return True
+
+
 def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
     """Stuur een e-mail met de rotatie-samenvatting."""
     if not mail_configured():
