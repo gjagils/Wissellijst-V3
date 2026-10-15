@@ -266,6 +266,15 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
                             "verwijderd": result.get("verwijderd", 0),
                             "toegevoegd": result.get("toegevoegd", 0)})
 
+        if result.get("status") == "fout":
+            # Geen exception, maar wel mislukt (bv. blok genereren lukte niet).
+            from alerts import notify_failure
+            notify_failure(wl_dict.get("naam", wissellijst_id),
+                           result.get("tekst", "onbekend"), triggered_by)
+        else:
+            from alerts import clear_failures
+            clear_failures()
+
         # Stuur e-mail als ingeschakeld
         if (wl_dict.get("mail_na_rotatie") and wl_dict.get("mail_adres")
                 and result.get("status") == "ok"):
@@ -290,6 +299,8 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
         logger.error("Rotatie mislukt",
                      extra={"wissellijst_id": wissellijst_id,
                             "run_id": run_id, "error": str(e)})
+        from alerts import notify_failure
+        notify_failure(wl_dict.get("naam", wissellijst_id), e, triggered_by)
 
 
 def get_scheduler():

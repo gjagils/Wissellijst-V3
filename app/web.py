@@ -33,8 +33,11 @@ from discovery import (
 from automation import rotate_and_regenerate
 from mail import mail_configured, send_rotation_mail
 from validators import validate_wissellijst_config
+import auth
+import alerts
 
 app = Flask(__name__)
+auth.setup(app)
 
 # Voortgang bijhouden per taak
 _tasks = {}
@@ -178,7 +181,19 @@ def callback():
             500,
         )
     logger.info("Spotify gekoppeld")
+    alerts.invalidate_spotify_status()
     return redirect("/")
+
+
+@app.route("/api/status")
+def api_status():
+    """Status voor de UI: Spotify-koppeling, beveiliging, mail, laatste fout."""
+    return jsonify({
+        "spotify": alerts.spotify_status(),
+        "auth_enabled": auth.auth_enabled(),
+        "mail_configured": mail_configured(),
+        "laatste_fout": alerts.laatste_fout(),
+    })
 
 
 @app.route("/api/playlists")
@@ -734,6 +749,7 @@ def api_roteren(lijst_id):
             _tasks[task_id]["tekst"] = str(e)
             logger.error("Rotatie mislukt", extra={"error": str(e),
                                                     "wissellijst_id": lijst_id})
+            alerts.notify_failure(wl.get("naam", lijst_id), e, triggered_by="user")
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()

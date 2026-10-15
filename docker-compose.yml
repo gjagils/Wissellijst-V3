@@ -7,6 +7,9 @@ services:
       - "9090:5000"
     environment:
       - TZ=${TZ:-Europe/Amsterdam}
+      - APP_PASSWORD=${APP_PASSWORD:-}
+      - SECRET_KEY=${SECRET_KEY:-}
+      - ALERT_MAIL=${ALERT_MAIL:-}
       - DATABASE_URL=postgresql://wissellijst:wissellijst@db:5432/wissellijst
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
