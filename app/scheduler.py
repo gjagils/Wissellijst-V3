@@ -3,6 +3,7 @@
 Vervangt de polling-based _check_schedules thread met echte cron/interval jobs.
 """
 import datetime
+import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -15,12 +16,18 @@ logger = get_logger(__name__)
 # Globale scheduler instance
 _scheduler = None
 
+# Tijdzone waarin rotatie-tijdstippen worden geinterpreteerd. De container
+# draait in UTC; zonder dit vuurde "08:00" om 10:00 Nederlandse zomertijd.
+SCHEDULER_TZ = (os.getenv("SCHEDULER_TZ") or os.getenv("TZ")
+                or "Europe/Amsterdam")
+
 
 class WissellijstScheduler:
     """Beheert APScheduler jobs voor wissellijst rotaties."""
 
     def __init__(self):
         self.scheduler = BackgroundScheduler(
+            timezone=SCHEDULER_TZ,
             job_defaults={
                 "coalesce": True,
                 "max_instances": 1,
@@ -32,7 +39,7 @@ class WissellijstScheduler:
         """Start de scheduler."""
         if not self.scheduler.running:
             self.scheduler.start()
-            logger.info("Scheduler gestart")
+            logger.info("Scheduler gestart", extra={"timezone": SCHEDULER_TZ})
 
     def shutdown(self):
         """Stop de scheduler."""
@@ -146,14 +153,15 @@ class WissellijstScheduler:
             uur, minuut = 8, 0
 
         if schema == "elk_uur":
-            return CronTrigger(minute=0)
+            return CronTrigger(minute=0, timezone=SCHEDULER_TZ)
         elif schema == "elke_3_uur":
-            return CronTrigger(hour="11,14,17,20", minute=0)
+            return CronTrigger(hour="11,14,17,20", minute=0, timezone=SCHEDULER_TZ)
         elif schema == "dagelijks":
-            return CronTrigger(hour=uur, minute=minuut)
+            return CronTrigger(hour=uur, minute=minuut, timezone=SCHEDULER_TZ)
         elif schema == "wekelijks":
             # APScheduler: 0=ma, 6=zo
-            return CronTrigger(day_of_week=dag, hour=uur, minute=minuut)
+            return CronTrigger(day_of_week=dag, hour=uur, minute=minuut,
+                               timezone=SCHEDULER_TZ)
         return None
 
     def get_jobs(self):

@@ -316,6 +316,41 @@ def clear_historie(lijst_id):
         os.remove(hf)
 
 
+def import_historie(lijst_id, tekst):
+    """Importeer historie-regels uit tekst (formaat van historie_*.txt).
+
+    Elke regel: "categorie - artiest - titel - spotify:track:...".
+    Regels die niet parsen worden overgeslagen, URIs die al in de historie
+    staan (of dubbel in de invoer) ook.
+
+    Returns: dict met toegevoegd, dubbel, ongeldig.
+    """
+    from suggest import _parse_history_line
+
+    bestaand = get_historie_uris(lijst_id)
+    nieuw = []
+    dubbel = 0
+    ongeldig = 0
+
+    for line in (tekst or "").splitlines():
+        if not line.strip():
+            continue
+        parsed = _parse_history_line(line)
+        if not parsed:
+            ongeldig += 1
+            continue
+        if parsed["uri"] in bestaand:
+            dubbel += 1
+            continue
+        bestaand.add(parsed["uri"])
+        nieuw.append(parsed)
+
+    if nieuw:
+        add_historie_bulk(lijst_id, nieuw)
+
+    return {"toegevoegd": len(nieuw), "dubbel": dubbel, "ongeldig": ongeldig}
+
+
 def get_historie_uris(lijst_id):
     """Haal alle historie URIs op als set."""
     if _use_db():
