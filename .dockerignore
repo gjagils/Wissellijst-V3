@@ -10,3 +10,5 @@ __pycache__
 .pytest_cache
 .venv
 docker-compose*.yml
+tests
+requirements-dev.txt

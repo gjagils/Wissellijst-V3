@@ -129,7 +129,7 @@ def spotify_status(max_age=60):
             return cached
     status = {"connected": False, "user": None, "error": None}
     try:
-        from suggest import get_spotify_client
+        from spotify_auth import get_spotify_client
         sp = get_spotify_client()
         me = sp.current_user()
         status["connected"] = True

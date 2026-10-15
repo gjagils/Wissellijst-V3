@@ -1,16 +1,20 @@
 """SQLAlchemy modellen voor Wissellijst V3."""
 import datetime
 from sqlalchemy import (
-    Column, String, Integer, Text, Boolean, DateTime, ForeignKey, JSON, Float,
-    create_engine,
+    Column, String, Integer, Text, Boolean, DateTime, ForeignKey, JSON,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
 
+def utcnow():
+    """Naive UTC-timestamp (kolommen zijn naive; datetime.utcnow is verouderd)."""
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class Wissellijst(Base):
-    """Configuratie van een wissellijst (vervangt wissellijsten.json entries)."""
+    """Configuratie van een wissellijst."""
     __tablename__ = "wissellijsten"
 
     id = Column(String(8), primary_key=True)
@@ -34,18 +38,17 @@ class Wissellijst(Base):
     mail_na_rotatie = Column(Boolean, default=False)
     mail_adres = Column(String(255), default="")
 
-    # Smaakprofiel (als tekst, voor backward compat)
+    # Smaakprofiel (kopie als tekst; de bron is de tabel smaakprofielen)
     smaakprofiel = Column(Text, default="")
 
     # Timestamps
     laatste_rotatie = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
-                        onupdate=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     # Relaties
     smaakprofiel_rel = relationship("Smaakprofiel", back_populates="wissellijst",
-                                     uselist=False, cascade="all, delete-orphan")
+                                    uselist=False, cascade="all, delete-orphan")
     historie = relationship("HistorieEntry", back_populates="wissellijst",
                             cascade="all, delete-orphan",
                             order_by="HistorieEntry.id")
@@ -57,7 +60,6 @@ class Wissellijst(Base):
                                 order_by="RotatieRun.started_at.desc()")
 
     def to_dict(self):
-        """Converteer naar dict (compatible met het oude JSON formaat)."""
         return {
             "id": self.id,
             "naam": self.naam,
@@ -79,20 +81,19 @@ class Wissellijst(Base):
 
 
 class Smaakprofiel(Base):
-    """Smaakprofiel per wissellijst (vervangt smaakprofiel_*.txt)."""
+    """Smaakprofiel per wissellijst."""
     __tablename__ = "smaakprofielen"
 
     wissellijst_id = Column(String(8), ForeignKey("wissellijsten.id"),
                             primary_key=True)
     profiel = Column(Text, default="")
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
-                        onupdate=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     wissellijst = relationship("Wissellijst", back_populates="smaakprofiel_rel")
 
 
 class HistorieEntry(Base):
-    """Historie-entry per wissellijst (vervangt historie_*.txt)."""
+    """Historie-entry per wissellijst: elk nummer dat ooit in de playlist zat."""
     __tablename__ = "historie"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -102,13 +103,13 @@ class HistorieEntry(Base):
     artiest = Column(String(255), default="")
     titel = Column(String(255), default="")
     uri = Column(String(100), default="")
-    added_at = Column(DateTime, default=datetime.datetime.utcnow)
+    added_at = Column(DateTime, default=utcnow)
 
     wissellijst = relationship("Wissellijst", back_populates="historie")
 
 
 class WachtrijEntry(Base):
-    """Wachtrij-entry per wissellijst (vervangt wachtrij_*.txt)."""
+    """Wachtrij-entry per wissellijst: het volgende blok."""
     __tablename__ = "wachtrij"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -132,7 +133,7 @@ class RotatieRun(Base):
                             nullable=False, index=True)
     triggered_by = Column(String(20), default="user")  # user of scheduler
     status = Column(String(20), default="gestart")  # gestart, voltooid, mislukt
-    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, default=utcnow)
     completed_at = Column(DateTime, nullable=True)
     tracks_verwijderd = Column(Integer, default=0)
     tracks_toegevoegd = Column(Integer, default=0)
@@ -144,7 +145,7 @@ class RotatieRun(Base):
 
 
 class RotatieWijziging(Base):
-    """Individuele track wijziging binnen een rotatie-run."""
+    """Individuele track-wijziging binnen een rotatie-run."""
     __tablename__ = "rotatie_wijzigingen"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -155,6 +156,16 @@ class RotatieWijziging(Base):
     titel = Column(String(255), default="")
     uri = Column(String(100), default="")
     categorie = Column(String(100), default="")
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     run = relationship("RotatieRun", back_populates="wijzigingen")
+
+
+class SpotifyToken(Base):
+    """Het Spotify OAuth-token (één rij). Vervangt het bestand .cache."""
+    __tablename__ = "spotify_token"
+
+    id = Column(Integer, primary_key=True)  # altijd 1
+    token_info = Column(JSON, nullable=False)
+    spotify_user = Column(String(255), default="")
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

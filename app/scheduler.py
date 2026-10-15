@@ -1,310 +1,202 @@
-"""APScheduler service voor Wissellijst V3.
-
-Vervangt de polling-based _check_schedules thread met echte cron/interval jobs.
-"""
-import datetime
+"""APScheduler-service: geplande rotaties, plus de ene plek waar een rotatie
+wordt uitgevoerd en vastgelegd (audit trail), ook bij handmatige rotaties."""
 import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Globale scheduler instance
 _scheduler = None
 
-# Tijdzone waarin rotatie-tijdstippen worden geinterpreteerd. De container
-# draait in UTC; zonder dit vuurde "08:00" om 10:00 Nederlandse zomertijd.
-SCHEDULER_TZ = (os.getenv("SCHEDULER_TZ") or os.getenv("TZ")
-                or "Europe/Amsterdam")
+# Tijdzone waarin rotatie-tijdstippen worden geïnterpreteerd (de container draait in UTC).
+SCHEDULER_TZ = os.getenv("SCHEDULER_TZ") or os.getenv("TZ") or "Europe/Amsterdam"
 
 
 class WissellijstScheduler:
-    """Beheert APScheduler jobs voor wissellijst rotaties."""
-
     def __init__(self):
         self.scheduler = BackgroundScheduler(
             timezone=SCHEDULER_TZ,
-            job_defaults={
-                "coalesce": True,
-                "max_instances": 1,
-                "misfire_grace_time": 300,
-            }
+            job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300},
         )
 
     def start(self):
-        """Start de scheduler."""
         if not self.scheduler.running:
             self.scheduler.start()
             logger.info("Scheduler gestart", extra={"timezone": SCHEDULER_TZ})
 
     def shutdown(self):
-        """Stop de scheduler."""
         if self.scheduler.running:
             self.scheduler.shutdown(wait=False)
             logger.info("Scheduler gestopt")
 
     def reload_jobs(self):
-        """Herlaad alle jobs uit de database.
-
-        Verwijdert bestaande jobs en maakt nieuwe aan op basis van
-        de wissellijst configuraties in de database.
-        """
+        """Verwijder alle wissellijst-jobs en maak ze opnieuw aan uit de database."""
         from db.session import db_available, get_session
         from db.models import Wissellijst
 
         if not db_available():
             logger.warning("Database niet beschikbaar, skip job reload")
             return
-
-        # Verwijder alle bestaande wissellijst jobs
-        existing_jobs = self.scheduler.get_jobs()
-        for job in existing_jobs:
+        for job in self.scheduler.get_jobs():
             if job.id.startswith("wl_"):
                 job.remove()
-
-        # Laad wissellijsten uit DB en maak jobs
         with get_session() as session:
-            wissellijsten = session.query(Wissellijst).all()
-            count = 0
-            for wl in wissellijsten:
-                if self._add_job(wl):
-                    count += 1
-
+            count = sum(1 for wl in session.query(Wissellijst).all() if self._add_job(wl))
         logger.info("Jobs herladen", extra={"jobs_count": count})
 
     def update_job(self, wissellijst):
-        """Update of verwijder een job voor een specifieke wissellijst.
-
-        Args:
-            wissellijst: Wissellijst object of dict met configuratie
-        """
+        """Herplan (of verwijder) de job van één wissellijst (model of dict)."""
         wl_id = wissellijst.id if hasattr(wissellijst, "id") else wissellijst["id"]
-        job_id = f"wl_{wl_id}"
+        self.remove_job(wl_id)
+        self._add_job(wissellijst)
 
-        # Verwijder bestaande job
-        existing = self.scheduler.get_job(job_id)
+    def remove_job(self, wl_id):
+        existing = self.scheduler.get_job(f"wl_{wl_id}")
         if existing:
             existing.remove()
 
-        # Maak nieuwe job als schema niet 'uit' is
-        self._add_job(wissellijst)
-
     def _add_job(self, wissellijst):
-        """Voeg een job toe voor een wissellijst.
-
-        Returns: True als job is aangemaakt, False als schema 'uit' is.
-        """
         if hasattr(wissellijst, "rotatie_schema"):
-            # SQLAlchemy model
-            wl_id = wissellijst.id
+            wl_id, naam = wissellijst.id, wissellijst.naam
             schema = wissellijst.rotatie_schema or "uit"
             tijdstip = wissellijst.rotatie_tijdstip or "08:00"
             dag = wissellijst.rotatie_dag or 0
-            naam = wissellijst.naam
         else:
-            # Dict
             wl_id = wissellijst["id"]
+            naam = wissellijst.get("naam", wl_id)
             schema = wissellijst.get("rotatie_schema", "uit")
             tijdstip = wissellijst.get("rotatie_tijdstip", "08:00")
             dag = wissellijst.get("rotatie_dag", 0)
-            naam = wissellijst.get("naam", wl_id)
 
         if schema == "uit":
             return False
-
         trigger = self._make_trigger(schema, tijdstip, dag)
         if not trigger:
-            logger.warning("Ongeldige trigger voor wissellijst",
-                           extra={"wissellijst_id": wl_id, "schema": schema})
+            logger.warning("Ongeldige trigger", extra={"wissellijst_id": wl_id, "schema": schema})
             return False
 
-        job_id = f"wl_{wl_id}"
         self.scheduler.add_job(
-            func=_execute_rotation,
-            trigger=trigger,
-            id=job_id,
-            name=f"Rotatie: {naam}",
-            args=[wl_id],
-            replace_existing=True,
+            func=_execute_rotation, trigger=trigger, id=f"wl_{wl_id}",
+            name=f"Rotatie: {naam}", args=[wl_id], replace_existing=True,
         )
-
-        logger.info("Job aangemaakt",
-                     extra={"wissellijst_id": wl_id, "schema": schema,
-                            "naam": naam})
+        logger.info("Job aangemaakt", extra={"wissellijst_id": wl_id, "schema": schema, "naam": naam})
         return True
 
-    def _make_trigger(self, schema, tijdstip, dag):
-        """Maak een APScheduler trigger op basis van schema.
-
-        Args:
-            schema: 'elk_uur', 'elke_3_uur', 'dagelijks', 'wekelijks'
-            tijdstip: 'HH:MM' string
-            dag: 0-6 (ma-zo)
-
-        Returns: trigger object of None
-        """
+    @staticmethod
+    def _make_trigger(schema, tijdstip, dag):
         try:
             uur, minuut = map(int, tijdstip.split(":"))
         except (ValueError, AttributeError):
             uur, minuut = 8, 0
-
+        tz = SCHEDULER_TZ
         if schema == "elk_uur":
-            return CronTrigger(minute=0, timezone=SCHEDULER_TZ)
-        elif schema == "elke_3_uur":
-            return CronTrigger(hour="11,14,17,20", minute=0, timezone=SCHEDULER_TZ)
-        elif schema == "dagelijks":
-            return CronTrigger(hour=uur, minute=minuut, timezone=SCHEDULER_TZ)
-        elif schema == "wekelijks":
-            # APScheduler: 0=ma, 6=zo
-            return CronTrigger(day_of_week=dag, hour=uur, minute=minuut,
-                               timezone=SCHEDULER_TZ)
+            return CronTrigger(minute=0, timezone=tz)
+        if schema == "elke_3_uur":
+            return CronTrigger(hour="11,14,17,20", minute=0, timezone=tz)
+        if schema == "dagelijks":
+            return CronTrigger(hour=uur, minute=minuut, timezone=tz)
+        if schema == "wekelijks":
+            return CronTrigger(day_of_week=dag, hour=uur, minute=minuut, timezone=tz)
         return None
 
     def get_jobs(self):
-        """Lijst van geplande jobs.
-
-        Returns: lijst van dicts met job info
-        """
-        jobs = []
-        for job in self.scheduler.get_jobs():
-            if job.id.startswith("wl_"):
-                jobs.append({
-                    "id": job.id,
-                    "naam": job.name,
-                    "wissellijst_id": job.id.replace("wl_", ""),
-                    "volgende_run": job.next_run_time.isoformat()
-                    if job.next_run_time else None,
-                })
-        return jobs
-
-    def trigger_manual(self, wissellijst_id):
-        """Trigger een rotatie handmatig (buiten het schema).
-
-        Args:
-            wissellijst_id: ID van de wissellijst
-        """
-        _execute_rotation(wissellijst_id, triggered_by="user")
+        return [{
+            "id": job.id,
+            "naam": job.name,
+            "wissellijst_id": job.id.replace("wl_", ""),
+            "volgende_run": job.next_run_time.isoformat() if job.next_run_time else None,
+        } for job in self.scheduler.get_jobs() if job.id.startswith("wl_")]
 
 
 def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
-    """Voer een rotatie uit voor een wissellijst.
+    """Voer een rotatie uit en leg hem vast (RotatieRun + wijzigingen).
 
-    Wordt aangeroepen door APScheduler of handmatig.
-    Maakt RotatieRun en RotatieWijziging records aan.
+    Wordt aangeroepen door APScheduler én door de handmatige rotatie in web.py.
+    Returns het resultaat-dict van rotate_and_regenerate; raist bij een fout
+    (na vastleggen en alarm), zodat de aanroeper de fout ook ziet.
     """
-    from db.session import db_available, get_session
-    from db.models import Wissellijst, RotatieRun, RotatieWijziging
+    from db.session import get_session
+    from db.models import Wissellijst, RotatieRun, RotatieWijziging, utcnow
+    from alerts import notify_failure, clear_failures
 
-    logger.info("Rotatie starten",
-                extra={"wissellijst_id": wissellijst_id,
-                       "triggered_by": triggered_by})
+    logger.info("Rotatie starten", extra={"wissellijst_id": wissellijst_id,
+                                          "triggered_by": triggered_by})
 
-    if not db_available():
-        logger.error("Database niet beschikbaar voor rotatie")
-        return
-
-    # Haal wissellijst op
     with get_session() as session:
-        wl = session.query(Wissellijst).get(wissellijst_id)
+        wl = session.get(Wissellijst, wissellijst_id)
         if not wl:
-            logger.error("Wissellijst niet gevonden",
-                         extra={"wissellijst_id": wissellijst_id})
-            return
+            raise ValueError(f"Wissellijst niet gevonden: {wissellijst_id}")
         wl_dict = wl.to_dict()
 
-    # Maak rotatie run record
     with get_session() as session:
-        run = RotatieRun(
-            wissellijst_id=wissellijst_id,
-            triggered_by=triggered_by,
-            status="gestart",
-        )
+        run = RotatieRun(wissellijst_id=wissellijst_id, triggered_by=triggered_by, status="gestart")
         session.add(run)
         session.flush()
         run_id = run.id
 
     try:
+        # Eerst het token controleren: een ingetrokken token is dan direct een
+        # spotify_auth-fout in plaats van een vage fout halverwege.
+        from spotify_auth import ensure_token
+        ensure_token()
+
         from automation import rotate_and_regenerate
         result = rotate_and_regenerate(wl_dict)
 
-        # Update run record
         with get_session() as session:
-            run = session.query(RotatieRun).get(run_id)
-            run.status = "voltooid"
-            run.completed_at = datetime.datetime.utcnow()
+            run = session.get(RotatieRun, run_id)
+            run.status = "mislukt" if result.get("status") == "fout" else "voltooid"
+            run.completed_at = utcnow()
             run.tracks_verwijderd = result.get("verwijderd", 0)
             run.tracks_toegevoegd = result.get("toegevoegd", 0)
-
-            # Sla individuele wijzigingen op
-            for track in result.get("verwijderd_detail", []):
-                session.add(RotatieWijziging(
-                    run_id=run_id,
-                    type="verwijderd",
-                    artiest=track.get("artiest", ""),
-                    titel=track.get("titel", ""),
-                ))
-            for track in result.get("toegevoegd_detail", []):
-                session.add(RotatieWijziging(
-                    run_id=run_id,
-                    type="toegevoegd",
-                    artiest=track.get("artiest", ""),
-                    titel=track.get("titel", ""),
-                ))
-
-        # Update laatste rotatie
-        with get_session() as session:
-            wl = session.query(Wissellijst).get(wissellijst_id)
-            wl.laatste_rotatie = datetime.datetime.utcnow()
+            run.error_message = result.get("tekst") if result.get("status") == "fout" else None
+            for soort, key in (("verwijderd", "verwijderd_detail"), ("toegevoegd", "toegevoegd_detail")):
+                for track in result.get(key, []):
+                    session.add(RotatieWijziging(run_id=run_id, type=soort,
+                                                 artiest=track.get("artiest", ""),
+                                                 titel=track.get("titel", "")))
+            wl = session.get(Wissellijst, wissellijst_id)
+            if result.get("status") == "ok":
+                wl.laatste_rotatie = utcnow()
 
         logger.info("Rotatie voltooid",
-                     extra={"wissellijst_id": wissellijst_id,
-                            "run_id": run_id,
-                            "verwijderd": result.get("verwijderd", 0),
-                            "toegevoegd": result.get("toegevoegd", 0)})
+                    extra={"wissellijst_id": wissellijst_id, "run_id": run_id,
+                           "status": result.get("status"),
+                           "verwijderd": result.get("verwijderd", 0),
+                           "toegevoegd": result.get("toegevoegd", 0)})
 
         if result.get("status") == "fout":
-            # Geen exception, maar wel mislukt (bv. blok genereren lukte niet).
-            from alerts import notify_failure
-            notify_failure(wl_dict.get("naam", wissellijst_id),
-                           result.get("tekst", "onbekend"), triggered_by)
+            notify_failure(wl_dict.get("naam", wissellijst_id), result.get("tekst", "onbekend"),
+                           triggered_by)
         else:
-            from alerts import clear_failures
             clear_failures()
-
-        # Stuur e-mail als ingeschakeld
-        if (wl_dict.get("mail_na_rotatie") and wl_dict.get("mail_adres")
-                and result.get("status") == "ok"):
-            try:
-                from mail import send_rotation_mail
-                send_rotation_mail(
-                    wl_dict["mail_adres"], wl_dict["naam"],
-                    result.get("verwijderd_detail", []),
-                    result.get("toegevoegd_detail", []),
-                )
-            except Exception as mail_err:
-                logger.error("Fout bij rotatie-mail",
-                             extra={"error": str(mail_err)})
+            if (wl_dict.get("mail_na_rotatie") and wl_dict.get("mail_adres")
+                    and result.get("status") == "ok"):
+                try:
+                    from mail import send_rotation_mail
+                    send_rotation_mail(wl_dict["mail_adres"], wl_dict["naam"],
+                                       result.get("verwijderd_detail", []),
+                                       result.get("toegevoegd_detail", []))
+                except Exception as mail_err:
+                    logger.error("Fout bij rotatie-mail", extra={"error": str(mail_err)})
+        return result
 
     except Exception as e:
         with get_session() as session:
-            run = session.query(RotatieRun).get(run_id)
+            run = session.get(RotatieRun, run_id)
             run.status = "mislukt"
-            run.completed_at = datetime.datetime.utcnow()
-            run.error_message = str(e)
-
-        logger.error("Rotatie mislukt",
-                     extra={"wissellijst_id": wissellijst_id,
-                            "run_id": run_id, "error": str(e)})
-        from alerts import notify_failure
+            run.completed_at = utcnow()
+            run.error_message = str(e)[:2000]
+        logger.error("Rotatie mislukt", extra={"wissellijst_id": wissellijst_id,
+                                               "run_id": run_id, "error": str(e)})
         notify_failure(wl_dict.get("naam", wissellijst_id), e, triggered_by)
+        raise
 
 
 def get_scheduler():
-    """Haal de globale scheduler instance op (lazy init)."""
     global _scheduler
     if _scheduler is None:
         _scheduler = WissellijstScheduler()
