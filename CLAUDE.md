@@ -5,6 +5,11 @@ Werkafspraken voor dit repo. Lees eerst `README.md` voor wat de app doet en hoe 
 ## Werkwijze
 
 - Werk op een branch, open een PR naar `main`. Een merge naar `main` deployt direct naar de NAS.
+- **Staande toestemming (Gerd-Jan, 15 oktober 2026):** een PR die af is, getest is en groene CI
+  heeft, mag zonder te vragen gemerged en gedeployed worden. Vraag alleen bij wijzigingen die
+  data kunnen vernietigen, bij handmatige stappen na de merge (env-variabelen in Portainer,
+  opnieuw koppelen) of als het onduidelijk is of het werk af is. Meld na de merge kort wat er
+  live is gegaan.
 - Draai `pytest -q` vóór elke push; de tests gebruiken SQLite en mocken Spotify en OpenAI.
 - Houd PR's klein en beschrijf in de PR wat er na de merge nog handmatig moet (env-variabelen
   in Portainer, opnieuw koppelen, enzovoort).
