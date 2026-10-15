@@ -282,7 +282,10 @@
         <div id="tab-content-historie" class="card hidden">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <h2 style="margin:0;">Historie</h2>
-                <button class="btn btn-danger" onclick="wisHistorie()">Wis historie</button>
+                <div class="btn-row" style="margin:0;">
+                    <button class="btn btn-secondary" onclick="openImportModal()">Importeren</button>
+                    <button class="btn btn-danger" onclick="wisHistorie()">Wis historie</button>
+                </div>
             </div>
             <p class="historie-count" id="historie-count"></p>
             <div class="historie-lijst" id="historie-lijst"></div>
@@ -452,6 +455,24 @@
                 <button class="btn btn-secondary" onclick="sluitVervangModal()">Annuleren</button>
             </div>
             <p id="vervang-status" class="status-tekst hidden" style="margin-top:8px;"></p>
+        </div>
+    </div>
+
+    <div id="import-modal" class="modal-overlay" onclick="sluitImportModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Historie importeren</h2>
+            <p style="color:#888; font-size:0.85em; margin-bottom:12px;">
+                Plak de inhoud van een oud <code>historie.txt</code>. E&eacute;n nummer per regel:
+                <code>categorie - artiest - titel - spotify:track:...</code><br>
+                Nummers die al in de historie staan worden overgeslagen.
+            </p>
+            <textarea id="import-tekst" rows="12"
+                      placeholder="90s - Artiest - Titel - spotify:track:..."></textarea>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btn-import" onclick="importeerHistorie()">Importeren</button>
+                <button class="btn btn-secondary" onclick="sluitImportModal()">Annuleren</button>
+            </div>
+            <p id="import-status" class="status-tekst hidden" style="margin-top:8px;"></p>
         </div>
     </div>
 
@@ -1469,6 +1490,51 @@
                 }
             } catch (e) {
                 toonMelding('Historie wissen mislukt: ' + e.message, 'fout');
+            }
+        }
+
+        function openImportModal() {
+            if (!activeLijstId) return;
+            document.getElementById('import-tekst').value = '';
+            document.getElementById('import-status').classList.add('hidden');
+            document.getElementById('btn-import').disabled = false;
+            document.getElementById('import-modal').classList.add('visible');
+        }
+
+        function sluitImportModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('import-modal').classList.remove('visible');
+        }
+
+        async function importeerHistorie() {
+            const tekst = document.getElementById('import-tekst').value;
+            if (!tekst.trim()) return toonMelding('Plak eerst de historie-regels.', 'fout');
+
+            const btn = document.getElementById('btn-import');
+            const statusEl = document.getElementById('import-status');
+            btn.disabled = true;
+            statusEl.textContent = 'Importeren...';
+            statusEl.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie/import`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tekst }),
+                });
+                const result = await res.json();
+
+                if (result.error) {
+                    statusEl.textContent = result.error;
+                    btn.disabled = false;
+                } else {
+                    document.getElementById('import-modal').classList.remove('visible');
+                    toonMelding(result.tekst, 'ok');
+                    laadHistorie();
+                }
+            } catch (e) {
+                statusEl.textContent = 'Fout: ' + e.message;
+                btn.disabled = false;
             }
         }
 

@@ -18,7 +18,7 @@ from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
     save_wissellijst, delete_wissellijst,
     get_history_file, get_queue_file, get_smaakprofiel_file,
-    get_historie, delete_historie_entry, clear_historie,
+    get_historie, delete_historie_entry, clear_historie, import_historie,
     get_wachtrij, save_wachtrij,
     get_smaakprofiel, save_smaakprofiel,
     DATA_DIR, HISTORY_FILE,
@@ -526,6 +526,34 @@ def api_historie_wissen(lijst_id):
 
     clear_historie(lijst_id)
     return jsonify({"ok": True, "tekst": f"Historie van '{wl['naam']}' gewist."})
+
+
+@app.route("/api/wissellijsten/<lijst_id>/historie/import", methods=["POST"])
+def api_historie_importeren(lijst_id):
+    """Importeer historie uit tekst (bijv. een oud historie.txt bestand)."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    body = request.get_json(silent=True) or {}
+    tekst = body.get("tekst", "")
+    if not isinstance(tekst, str) or not tekst.strip():
+        return jsonify({"error": "Geen tekst om te importeren"}), 400
+
+    try:
+        result = import_historie(lijst_id, tekst)
+    except Exception as e:
+        logger.error("Historie import mislukt",
+                     extra={"wissellijst_id": lijst_id, "error": str(e)})
+        return jsonify({"error": str(e)}), 500
+
+    logger.info("Historie geimporteerd",
+                extra={"wissellijst_id": lijst_id, **result})
+    result["ok"] = True
+    result["tekst"] = (f"{result['toegevoegd']} nummers toegevoegd, "
+                       f"{result['dubbel']} stonden er al, "
+                       f"{result['ongeldig']} regels overgeslagen.")
+    return jsonify(result)
 
 
 # --- Wachtrij ---

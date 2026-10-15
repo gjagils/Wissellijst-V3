@@ -223,6 +223,25 @@ def rotate_and_regenerate(wl):
                 extra={"wissellijst": wl.get("naam", wl_id)})
     _check_queue_decades(sp, wl_id=wl_id, queue_file=queue_file)
 
+    # Stap 0: Lege wachtrij? Dan eerst een blok genereren, anders blijft
+    # de lijst voor altijd hangen op "wachtrij is leeg".
+    if not get_wachtrij(wl_id):
+        logger.warning("Wachtrij leeg bij rotatie, eerst blok genereren",
+                       extra={"wissellijst": wl.get("naam", wl_id)})
+        block = None
+        for _ in range(3):
+            block = generate_block(sp, wl["playlist_id"],
+                                   wl.get("categorieen", []),
+                                   history_file=history_file,
+                                   wl_id=wl_id,
+                                   max_per_artiest=wl.get("max_per_artiest", 0))
+            if block:
+                break
+        if not block:
+            return {"status": "fout",
+                    "tekst": "Wachtrij was leeg en nieuw blok genereren mislukt."}
+        save_wachtrij(wl_id, block)
+
     # Stap 1: Roteer
     result = rotate_playlist(wl["playlist_id"], wl_id=wl_id,
                              queue_file=queue_file, history_file=history_file)

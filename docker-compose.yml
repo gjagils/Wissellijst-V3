@@ -6,6 +6,7 @@ services:
     ports:
       - "9090:5000"
     environment:
+      - TZ=${TZ:-Europe/Amsterdam}
       - DATABASE_URL=postgresql://wissellijst:wissellijst@db:5432/wissellijst
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
