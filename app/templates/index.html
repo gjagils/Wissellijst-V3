@@ -384,6 +384,9 @@
                     <input type="checkbox" id="populariteit-verdeling"> Spreid populariteit (elk nummer in een blok uit een ander populariteitsvak)
                 </label>
                 <label style="margin-top:8px;">
+                    <input type="checkbox" id="instagram-plaatjes"> Maak na elke rotatie Instagram-plaatjes (5 IN / 5 OUT, decennia 80s-20s)
+                </label>
+                <label style="margin-top:8px;">
                     <input type="checkbox" id="gebruik-radiolijsten"> Gebruik radiolijsten (keuzemenu voor GPT en NL-populariteit)
                 </label>
             </div>
@@ -547,6 +550,19 @@
     </div>
 
     <script>
+        // Geeft de server HTML terug (bijv. de proxy-foutpagina tijdens een herstart na een
+        // deploy), dan een leesbare melding in plaats van "Unexpected token '<'".
+        Response.prototype.json = async function () {
+            const tekst = await this.text();
+            try {
+                return JSON.parse(tekst);
+            } catch (e) {
+                throw new Error(this.status >= 500 || tekst.trimStart().startsWith('<')
+                    ? 'de app is even niet bereikbaar (herstart na een update?). Probeer het over een minuut opnieuw'
+                    : 'onverwacht antwoord van de server');
+            }
+        };
+
         let playlists = [];
         let wissellijsten = [];
         let activeLijstId = null;
@@ -1107,6 +1123,7 @@
             document.getElementById('mail-na-rotatie').checked = false;
             document.getElementById('populariteit-verdeling').checked = false;
             document.getElementById('gebruik-radiolijsten').checked = false;
+            document.getElementById('instagram-plaatjes').checked = false;
             document.getElementById('mail-adres').value = '';
 
             onRotatieSchemaChange();
@@ -1142,6 +1159,7 @@
             document.getElementById('mail-na-rotatie').checked = !!wl.mail_na_rotatie;
             document.getElementById('populariteit-verdeling').checked = !!wl.populariteit_verdeling;
             document.getElementById('gebruik-radiolijsten').checked = !!wl.radiolijsten;
+            document.getElementById('instagram-plaatjes').checked = !!wl.instagram_plaatjes;
             document.getElementById('mail-adres').value = wl.mail_adres || '';
 
             onRotatieSchemaChange();
@@ -1266,6 +1284,7 @@
                 body.categorieen = categorieen;
                 body.populariteit_verdeling = document.getElementById('populariteit-verdeling').checked;
                 body.radiolijsten = document.getElementById('gebruik-radiolijsten').checked;
+                body.instagram_plaatjes = document.getElementById('instagram-plaatjes').checked;
             }
 
             if (editLijstId) body.id = editLijstId;

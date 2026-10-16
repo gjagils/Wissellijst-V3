@@ -66,10 +66,42 @@
             border: 1px solid #333; border-radius: 6px; padding: 12px; font: inherit; font-size: 0.9em;
         }
         .leeg { color: #b3b3b3; font-size: 30px; }
+
+        .plaatjes { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+        .plaatjes h2 { color: #b3b3b3; font-size: 1em; text-transform: uppercase; letter-spacing: 1px; }
+        .plaatje { background: #1e1e1e; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+        .plaatje img { width: 100%; height: auto; border-radius: 4px; display: block; }
+        .plaatje textarea {
+            width: 100%; height: 150px; background: #121212; color: #e0e0e0;
+            border: 1px solid #333; border-radius: 6px; padding: 10px; font: inherit; font-size: 0.85em;
+        }
+        .sectie-titel { color: #b3b3b3; font-size: 1em; text-transform: uppercase; letter-spacing: 1px; width: 100%; max-width: 640px; }
     </style>
 </head>
 <body>
     {% set totaal = eruit|length + erin|length %}
+    <div class="plaatjes">
+        <h2>Instagram-plaatjes (Wissellijst-stijl)</h2>
+        {% for p in plaatjes %}
+        <div class="plaatje">
+            <img src="/rotaties/{{ run_id }}/plaatje/{{ p.id }}.png" alt="{{ p.alt }}">
+            <div class="knoppen" style="justify-content:flex-start;">
+                <a class="btn" style="text-decoration:none;" href="/rotaties/{{ run_id }}/plaatje/{{ p.id }}.png?download=1">Download {{ '5 IN' if p.richting == 'in' else '5 OUT' }}{% if p.deel > 1 %} (blok {{ p.deel }}){% endif %}</a>
+                <button class="btn btn-secondary" onclick="kopieer('caption-{{ p.id }}')">Kopieer bijschrift</button>
+                <button class="btn btn-secondary" onclick="kopieer('alt-{{ p.id }}')">Kopieer alt-tekst</button>
+            </div>
+            <textarea id="caption-{{ p.id }}" readonly>{{ p.caption }}</textarea>
+            <textarea id="alt-{{ p.id }}" readonly style="height:80px;">{{ p.alt }}</textarea>
+        </div>
+        {% else %}
+        <p style="color:#888; font-size:0.9em;">Nog geen plaatjes voor deze rotatie.</p>
+        {% endfor %}
+        <div class="knoppen" style="justify-content:flex-start;">
+            <button class="btn btn-secondary" id="btn-plaatjes" onclick="maakPlaatjes()">{{ 'Opnieuw maken' if plaatjes else 'Plaatjes maken' }}</button>
+        </div>
+    </div>
+
+    <h2 class="sectie-titel">Eenvoudige kaart</h2>
     <div class="knoppen">
         <button class="btn" onclick="downloadPng()">Download als afbeelding</button>
         <button class="btn btn-secondary" onclick="kopieerCaption()">Kopieer bijschrift</button>
@@ -149,6 +181,36 @@
                 melding('Downloaden lukt niet: ' + e.message + '. Maak een screenshot van de kaart.');
             } finally {
                 schaalEl.style.transform = oud;
+            }
+        }
+
+        async function kopieer(id) {
+            const el = document.getElementById(id);
+            try {
+                await navigator.clipboard.writeText(el.value);
+                melding('Gekopieerd.');
+            } catch (e) {
+                el.select();
+                melding('Selecteer en kopieer de tekst handmatig.');
+            }
+        }
+
+        async function maakPlaatjes() {
+            const btn = document.getElementById('btn-plaatjes');
+            btn.disabled = true;
+            melding('Plaatjes maken... (met AI-illustratie kan dit een minuut duren)');
+            try {
+                const { task_id } = await (await fetch('/api/rotaties/{{ run_id }}/plaatjes', { method: 'POST' })).json();
+                for (;;) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const t = await (await fetch(`/api/vullen/${task_id}`)).json();
+                    if (t.status === 'bezig') { melding(t.tekst); continue; }
+                    if (t.status === 'klaar') { location.reload(); return; }
+                    throw new Error(t.tekst);
+                }
+            } catch (e) {
+                melding('Plaatjes maken mislukt: ' + e.message);
+                btn.disabled = false;
             }
         }
 

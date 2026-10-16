@@ -49,7 +49,7 @@ def caption(naam, datum, eruit, erin):
 def post_data(run_id):
     """Alles voor de post van één rotatie-run, of None als de run niet bestaat."""
     from db.session import get_session
-    from db.models import RotatieRun, RotatieWijziging, Wissellijst
+    from db.models import RotatieRun, RotatieWijziging, RotatieAfbeelding, Wissellijst
 
     with get_session() as s:
         run = s.get(RotatieRun, run_id)
@@ -62,11 +62,15 @@ def post_data(run_id):
                   for w in wijzigingen]
         naam = wl.naam if wl else "Wissellijst"
         datum = _datum(run.completed_at or run.started_at)
+        plaatjes = [{"id": a.id, "richting": a.richting, "deel": a.deel,
+                     "bestandsnaam": a.bestandsnaam, "caption": a.caption, "alt": a.alt_tekst}
+                    for a in s.query(RotatieAfbeelding).filter_by(run_id=run_id)
+                    .order_by(RotatieAfbeelding.deel, RotatieAfbeelding.richting).all()]
 
     hoezen = _hoezen([t["uri"] for t in tracks])
     for t in tracks:
         t["hoes"] = hoezen.get(t["uri"], "")
     eruit = [t for t in tracks if t["type"] == "verwijderd"]
     erin = [t for t in tracks if t["type"] == "toegevoegd"]
-    return {"naam": naam, "datum": datum, "eruit": eruit, "erin": erin,
+    return {"naam": naam, "datum": datum, "eruit": eruit, "erin": erin, "plaatjes": plaatjes,
             "caption": caption(naam, datum, eruit, erin)}
