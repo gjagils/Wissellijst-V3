@@ -35,6 +35,10 @@ def send_alert_mail(to_address, subject, plain_text):
     return True
 
 
+def _jaar(track):
+    return f" ({track['jaar']})" if track.get("jaar") else ""
+
+
 def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
     """Stuur een e-mail met de rotatie-samenvatting."""
     if not mail_configured():
@@ -49,10 +53,10 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
     subject = f"Rotatie voltooid: {wissellijst_naam}"
 
     verwijderd_html = "".join(
-        f"<li>{t['artiest']} &mdash; {t['titel']}</li>" for t in verwijderd
+        f"<li>{t['artiest']} &mdash; {t['titel']}{_jaar(t)}</li>" for t in verwijderd
     )
     toegevoegd_html = "".join(
-        f"<li>{t['artiest']} &mdash; {t['titel']}</li>" for t in toegevoegd
+        f"<li>{t['artiest']} &mdash; {t['titel']}{_jaar(t)}</li>" for t in toegevoegd
     )
 
     html = f"""\
@@ -75,10 +79,10 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
 </html>"""
 
     verwijderd_tekst = "\n".join(
-        f"  - {t['artiest']} - {t['titel']}" for t in verwijderd
+        f"  - {t['artiest']} - {t['titel']}{_jaar(t)}" for t in verwijderd
     )
     toegevoegd_tekst = "\n".join(
-        f"  + {t['artiest']} - {t['titel']}" for t in toegevoegd
+        f"  + {t['artiest']} - {t['titel']}{_jaar(t)}" for t in toegevoegd
     )
     plain = (
         f"Rotatie voltooid: {wissellijst_naam}\n\n"

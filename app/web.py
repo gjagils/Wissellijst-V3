@@ -453,7 +453,8 @@ def api_wachtrij_vervang(lijst_id):
         return jsonify({"error": str(e)}), 500
 
     entries[entry_index] = {"categorie": entries[entry_index]["categorie"],
-                            "artiest": artiest, "titel": titel, "uri": result["uri"]}
+                            "artiest": artiest, "titel": titel, "uri": result["uri"],
+                            "jaar": result.get("jaar")}
     save_wachtrij(lijst_id, entries)
     return jsonify(entries)
 
@@ -536,7 +537,8 @@ def api_rotaties(lijst_id):
             "tracks_verwijderd": run.tracks_verwijderd,
             "tracks_toegevoegd": run.tracks_toegevoegd,
             "error_message": run.error_message,
-            "wijzigingen": [{"type": w.type, "artiest": w.artiest, "titel": w.titel}
+            "wijzigingen": [{"type": w.type, "artiest": w.artiest, "titel": w.titel,
+                             "jaar": w.jaar, "categorie": w.categorie}
                             for w in s.query(RotatieWijziging).filter_by(run_id=run.id).all()],
         } for run in runs])
 

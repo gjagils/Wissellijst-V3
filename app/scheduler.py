@@ -159,7 +159,8 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
                                                  artiest=track.get("artiest", ""),
                                                  titel=track.get("titel", ""),
                                                  uri=track.get("uri", ""),
-                                                 categorie=track.get("categorie", "")))
+                                                 categorie=track.get("categorie", ""),
+                                                 jaar=track.get("jaar")))
             wl = session.get(Wissellijst, wissellijst_id)
             if result.get("status") == "ok":
                 wl.laatste_rotatie = utcnow()

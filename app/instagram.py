@@ -162,13 +162,22 @@ def bestandsnaam(asset, deel=1):
             f"-{asset['direction'].lower()}{extra}-square.png")
 
 
+def _jaar(t):
+    return f" ({t['year']})" if t.get("year") else ""
+
+
+def artiest_regel(t):
+    """'a-ha · 1985' voor op het plaatje (het jaar als het bekend is)."""
+    return f"{t['artist']} · {t['year']}" if t.get("year") else t["artist"]
+
+
 def caption(asset):
     h = uitgelicht(asset)
     richting = "IN" if asset["direction"] == "IN" else "OUT"
     regels = [f"🔄 Wissellijst — rotatie #{asset['rotation_number']}", "", f"5 {richting}.", ""]
-    regels += [f"{CAPTION_EMOJI[t['decade']]} {label(t['decade'])} — {t['title']} · {t['artist']}"
+    regels += [f"{CAPTION_EMOJI[t['decade']]} {label(t['decade'])} — {t['title']} · {t['artist']}{_jaar(t)}"
                for t in asset["tracks"]]
-    regels += ["", "▶ Nu op de Wissellijst:", f"{h['title']} — {h['artist']}", "",
+    regels += ["", "▶ Nu op de Wissellijst:", f"{h['title']} — {h['artist']}{_jaar(h)}", "",
                "#Wissellijst #DoorDeTijdHeen"]
     return "\n".join(regels)
 
@@ -177,7 +186,8 @@ def alt_tekst(asset):
     h = uitgelicht(asset)
     return (f"Wissellijst rotatie {asset['rotation_number']}, {asset['direction']}. "
             "Vijf nummers, één uit ieder decennium van de jaren 80 tot en met de jaren 20. "
-            f"Uitgelicht is {h['title']} van {h['artist']}. "
+            f"Uitgelicht is {h['title']} van {h['artist']}"
+            + (f" uit {h['year']}" if h.get("year") else "") + ". "
             f"De illustratie toont een {DEVICE_NL[asset['device']]} in retro pop-artstijl.")
 
 
@@ -423,7 +433,7 @@ def render(asset, achtergrond=None, hoezen=None):
         tx = x0 + 218
         rechts = x1 - (54 if is_h else 18)
         draw.text((tx, y + 40), _past(draw, t["title"], titel_f, rechts - tx), font=titel_f, fill=ink, anchor="lm")
-        draw.text((tx, y + 78), _past(draw, t["artist"], artiest_f, rechts - tx), font=artiest_f,
+        draw.text((tx, y + 78), _past(draw, artiest_regel(t), artiest_f, rechts - tx), font=artiest_f,
                   fill="#3A3F45", anchor="lm")
         if is_h:  # play-teken
             draw.polygon([(x1 - 42, y + 40), (x1 - 42, y + 76), (x1 - 14, y + 58)], fill=BRAND["redShadow"],
@@ -445,7 +455,7 @@ def render(asset, achtergrond=None, hoezen=None):
     for regel in regels:
         draw.text((620, ty), regel, font=hf, fill=ink, anchor="lm")
         ty += 36
-    draw.text((620, ty + 4), _past(draw, h["artist"], _medium_font(26), 374), font=_medium_font(26),
+    draw.text((620, ty + 4), _past(draw, artiest_regel(h), _medium_font(26), 374), font=_medium_font(26),
               fill="#3A3F45", anchor="lm")
 
     # 5 IN / 5 OUT
@@ -499,6 +509,7 @@ def maak_voor_run(run_id):
         moment = (run.completed_at or run.started_at).replace(tzinfo=datetime.timezone.utc)
         datum = moment.astimezone(ZoneInfo(SCHEDULER_TZ)).date()
         wijzigingen = [{"type": w.type, "title": schone_titel(w.titel), "artist": w.artiest,
+                        "year": w.jaar,
                         "uri": w.uri or "",
                         "decade": decade_van(w.categorie)}
                        for w in s.query(RotatieWijziging).filter_by(run_id=run_id)

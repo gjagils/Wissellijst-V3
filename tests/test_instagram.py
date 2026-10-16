@@ -18,7 +18,8 @@ TRACKS = [("20s", "Beautiful Things", "Benson Boone"), ("80s", "Take On Me", "a-
 
 
 def _tracks():
-    return [{"decade": d, "title": t, "artist": a, "artwork_url": ""} for d, t, a in TRACKS]
+    return [{"decade": d, "title": t, "artist": a, "year": 1980 + 10 * ig.DECADE_ORDER.index(d) + 5,
+             "artwork_url": ""} for d, t, a in TRACKS]
 
 
 def test_asset_volgorde_highlight_en_device():
@@ -31,8 +32,9 @@ def test_asset_volgorde_highlight_en_device():
     assert ig.maak_asset(_tracks(), 28, DATUM, "IN")["device"] == "smartphone_streaming"
     assert sum(t["highlighted"] for t in a_in["tracks"]) == 1
     assert ig.bestandsnaam(a_in) == "wissellijst-r027-2026-10-16-in-square.png"
-    assert "Nu op de Wissellijst:\nBack to Black — Amy Winehouse" in ig.caption(a_in)
-    assert "📼 80’s — Take On Me · a-ha" in ig.caption(a_in)
+    assert "Nu op de Wissellijst:\nBack to Black — Amy Winehouse (2005)" in ig.caption(a_in)
+    assert "📼 80’s — Take On Me · a-ha (1985)" in ig.caption(a_in)
+    assert ig.artiest_regel(a_in["tracks"][0]) == "a-ha · 1985"
     assert "Uitgelicht is Back to Black van Amy Winehouse" in ig.alt_tekst(a_in)
 
 

@@ -37,11 +37,15 @@ def _datum(dt):
     return f"{lokaal.day} {maanden[lokaal.month - 1]} {lokaal.year}"
 
 
+def _jaar(t):
+    return f" ({t['jaar']})" if t.get("jaar") else ""
+
+
 def caption(naam, datum, eruit, erin):
     regels = [f"🔄 {naam}: de wissel van {datum}", "", "Erin:"]
-    regels += [f"🟢 {t['artiest']} – {t['titel']}" for t in erin]
+    regels += [f"🟢 {t['artiest']} – {t['titel']}{_jaar(t)}" for t in erin]
     regels += ["", "Eruit:"]
-    regels += [f"🔴 {t['artiest']} – {t['titel']}" for t in eruit]
+    regels += [f"🔴 {t['artiest']} – {t['titel']}{_jaar(t)}" for t in eruit]
     regels += ["", "#spotify #playlist #nieuwemuziek #wissellijst"]
     return "\n".join(regels)
 
@@ -58,7 +62,8 @@ def post_data(run_id):
         wl = s.get(Wissellijst, run.wissellijst_id)
         wijzigingen = (s.query(RotatieWijziging).filter_by(run_id=run_id)
                        .order_by(RotatieWijziging.id).all())
-        tracks = [{"type": w.type, "artiest": w.artiest, "titel": w.titel, "uri": w.uri or ""}
+        tracks = [{"type": w.type, "artiest": w.artiest, "titel": w.titel, "uri": w.uri or "",
+                   "jaar": w.jaar}
                   for w in wijzigingen]
         naam = wl.naam if wl else "Wissellijst"
         datum = _datum(run.completed_at or run.started_at)

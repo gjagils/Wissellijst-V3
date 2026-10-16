@@ -111,6 +111,7 @@ class HistorieEntry(Base):
     artiest = Column(String(255), default="")
     titel = Column(String(255), default="")
     uri = Column(String(100), default="")
+    jaar = Column(Integer, nullable=True)  # jaar van de originele uitgave
     added_at = Column(DateTime, default=utcnow)
 
     wissellijst = relationship("Wissellijst", back_populates="historie")
@@ -127,6 +128,7 @@ class WachtrijEntry(Base):
     artiest = Column(String(255), default="")
     titel = Column(String(255), default="")
     uri = Column(String(100), default="")
+    jaar = Column(Integer, nullable=True)
     positie = Column(Integer, default=0)
 
     wissellijst = relationship("Wissellijst", back_populates="wachtrij")
@@ -164,6 +166,7 @@ class RotatieWijziging(Base):
     titel = Column(String(255), default="")
     uri = Column(String(100), default="")
     categorie = Column(String(100), default="")
+    jaar = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     run = relationship("RotatieRun", back_populates="wijzigingen")

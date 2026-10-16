@@ -22,31 +22,54 @@ def _openai():
     return OpenAI(api_key=OPENAI_API_KEY)
 
 
-def search_spotify(sp, artist, title):
-    """Zoek een track op Spotify; returns {"uri", "release_date", "popularity"} of None.
+def _jaar(release_date):
+    return int(release_date[:4]) if (release_date or "")[:4].isdigit() else None
 
+
+def search_spotify(sp, artist, title):
+    """Zoek een track op Spotify; returns {"uri", "release_date", "jaar", "popularity"} of None.
+
+    Een nummer staat vaak op meerdere albums (origineel, remaster, verzamelalbum). We nemen
+    de bekendste versie (hoogste popularity) als track, en de vroegste releasedatum van alle
+    versies als het jaar van het nummer; zo valt een 80s-hit met een remaster uit 2015 in de 80s.
     popularity is None als Spotify het veld niet meer meestuurt.
     """
-    def _extract(track):
-        return {
-            "uri": track["uri"],
-            "release_date": track.get("album", {}).get("release_date", ""),
-            "popularity": track.get("popularity"),
-        }
+    from radio import titel_sleutel, artiest_sleutel, zelfde_artiest
+
+    def versies(tracks, streng):
+        t_key, a_key = titel_sleutel(title), artiest_sleutel(artist)
+        gevonden = []
+        for t in tracks:
+            if not t or not t.get("uri"):
+                continue
+            artiesten = [artiest_sleutel(a["name"]) for a in t.get("artists", [])]
+            if not any(zelfde_artiest(a, a_key) or (a_key and a_key in a) for a in artiesten):
+                continue
+            if streng and titel_sleutel(t.get("name", "")) != t_key:
+                continue
+            gevonden.append(t)
+        return gevonden
+
+    def kies(gevonden):
+        beste = max(gevonden, key=lambda t: t.get("popularity") or 0)
+        datums = [d for d in (t.get("album", {}).get("release_date", "") for t in gevonden) if _jaar(d)]
+        release_date = min(datums) if datums else beste.get("album", {}).get("release_date", "")
+        return {"uri": beste["uri"], "release_date": release_date, "jaar": _jaar(release_date),
+                "popularity": beste.get("popularity")}
 
     try:
-        results = sp.search(q=f"track:{title} artist:{artist}", limit=1, type="track")
+        results = sp.search(q=f"track:{title} artist:{artist}", limit=10, type="track")
         tracks = results.get("tracks", {}).get("items", [])
-        if tracks:
-            return _extract(tracks[0])
+        # Zoals voorheen: zonder exacte titel-match de eerste treffer van deze gerichte zoekvraag.
+        gevonden = versies(tracks, streng=True) or [t for t in tracks[:1] if t and t.get("uri")]
+        if gevonden:
+            return kies(gevonden)
 
-        results = sp.search(q=f"{artist} {title}", limit=5, type="track")
-        tracks = results.get("tracks", {}).get("items", [])
-        artist_lower = artist.lower()
-        for t in tracks:
-            if any(artist_lower in a["name"].lower() for a in t.get("artists", [])):
-                return _extract(t)
-        return None
+        results = sp.search(q=f"{artist} {title}", limit=10, type="track")
+        gevonden = versies(results.get("tracks", {}).get("items", []), streng=False)
+        return kies(gevonden[:1] + [t for t in gevonden[1:]
+                                    if titel_sleutel(t.get("name", "")) == titel_sleutel(gevonden[0]["name"])]) \
+            if gevonden else None
     except Exception as e:
         logger.warning("Spotify search fout",
                        extra={"artiest": artist, "titel": title, "error": str(e)})
@@ -239,11 +262,12 @@ def _process_suggestions(raw_suggestions, categorieen, filled, skipped,
             verdeling.neem(popularity)
 
         filled[matched_cat] = {"categorie": matched_cat, "artiest": artist,
-                               "titel": title, "uri": uri}
+                               "titel": title, "uri": uri, "jaar": result.get("jaar")}
         used_uris.add(uri)
         artist_counts[artist] = artist_counts.get(artist, 0) + 1
-        logger.info("Track gekozen", extra={"categorie": matched_cat,
-                                            "artiest": artist, "titel": title})
+        logger.info("Track gekozen", extra={"categorie": matched_cat, "artiest": artist,
+                                            "titel": title, "jaar": result.get("jaar"),
+                                            "populariteit": popularity})
         if len(filled) == len(categorieen):
             break
 
@@ -323,6 +347,19 @@ def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_ge
             continue
         _process_suggestions(extra, categorieen, filled, skipped, used_uris,
                              artist_counts, max_per_artiest, sp, verdeling, radio_index)
+
+    # Laatste ronde zonder populariteitsvakken: een vak dat niet te vullen is (bijv. 90-100
+    # voor de 10s) mag het blok niet onvolledig maken. De vakken blijven zo goed mogelijk.
+    missing = [c for c in categorieen if c not in filled]
+    if missing and verdeling and not verdeling.uit:
+        logger.warning("Populariteitsvak niet te vullen, laatste ronde zonder vakken",
+                       extra={"missend": missing, "open_vakken": [f"{lo}-{hi}" for lo, hi
+                                                                  in verdeling.open_vakken()]})
+        extra = _ask_gpt_replacements(missing, skipped, exclude, blocked_artists=blocked(),
+                                      radio_menu=menu(missing))
+        if extra:
+            _process_suggestions(extra, categorieen, filled, skipped, used_uris,
+                                 artist_counts, max_per_artiest, sp, None, radio_index)
 
     total, filled_count = len(categorieen), len(filled)
     logger.info("Blok resultaat",

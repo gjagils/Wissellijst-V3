@@ -151,7 +151,7 @@ def set_laatste_rotatie(lijst_id):
 
 def _entry_dict(e):
     return {"categorie": e.categorie, "artiest": e.artiest,
-            "titel": e.titel, "uri": e.uri}
+            "titel": e.titel, "uri": e.uri, "jaar": e.jaar}
 
 
 def get_historie(lijst_id):
@@ -174,6 +174,7 @@ def add_historie_bulk(lijst_id, entries):
                 artiest=entry.get("artiest", ""),
                 titel=entry.get("titel", ""),
                 uri=entry.get("uri", ""),
+                jaar=entry.get("jaar"),
             ))
 
 
@@ -254,6 +255,7 @@ def save_wachtrij(lijst_id, entries):
                 artiest=entry.get("artiest", ""),
                 titel=entry.get("titel", ""),
                 uri=entry.get("uri", ""),
+                jaar=entry.get("jaar"),
                 positie=pos,
             ))
 
