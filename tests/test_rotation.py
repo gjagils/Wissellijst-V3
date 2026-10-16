@@ -26,7 +26,7 @@ def rotatie_mocks(monkeypatch):
     monkeypatch.setattr(mail, "_send", lambda msg, to: sent.append((to, msg["Subject"])))
 
     def fake_generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0,
-                            al_gekozen=None):
+                            al_gekozen=None, populariteit=False):
         calls["generate"] += 1
         calls.setdefault("al_gekozen", []).append(len(al_gekozen or []))
         return [{"categorie": "80s", "artiest": "A", "titel": "T",
