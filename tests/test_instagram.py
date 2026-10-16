@@ -140,7 +140,7 @@ def test_rotatie_start_plaatjes_alleen_als_aan(client, wissellijst, monkeypatch)
     import automation
     import spotify_auth
     gestart = []
-    monkeypatch.setattr(scheduler, "_plaatjes_op_achtergrond", gestart.append)
+    monkeypatch.setattr(scheduler, "_plaatjes_op_achtergrond", lambda run_id, mail=None: gestart.append(run_id))
     monkeypatch.setattr(spotify_auth, "ensure_token", lambda: None)
     monkeypatch.setattr(automation, "rotate_and_regenerate", lambda wl: {
         "status": "ok", "tekst": "ok", "verwijderd": 0, "toegevoegd": 0})
