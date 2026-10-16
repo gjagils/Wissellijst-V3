@@ -554,3 +554,14 @@ def maak_voor_run(run_id):
             s.add(p)
     logger.info("Instagram-plaatjes gemaakt", extra={"run_id": run_id, "aantal": len(plaatjes)})
     return len(plaatjes)
+
+
+def plaatjes_voor_run(run_id):
+    """De opgeslagen plaatjes van een rotatie, voor de mail."""
+    from db.session import get_session
+    from db.models import RotatieAfbeelding
+    with get_session() as s:
+        return [{"bestandsnaam": a.bestandsnaam, "png": a.png, "caption": a.caption,
+                 "alt": a.alt_tekst, "richting": a.richting}
+                for a in s.query(RotatieAfbeelding).filter_by(run_id=run_id)
+                .order_by(RotatieAfbeelding.deel, RotatieAfbeelding.richting).all()]

@@ -176,17 +176,16 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
                            triggered_by)
         else:
             clear_failures()
+            mail = None
             if (wl_dict.get("mail_na_rotatie") and wl_dict.get("mail_adres")
                     and result.get("status") == "ok"):
-                try:
-                    from mail import send_rotation_mail
-                    send_rotation_mail(wl_dict["mail_adres"], wl_dict["naam"],
-                                       result.get("verwijderd_detail", []),
-                                       result.get("toegevoegd_detail", []))
-                except Exception as mail_err:
-                    logger.error("Fout bij rotatie-mail", extra={"error": str(mail_err)})
+                mail = (wl_dict["mail_adres"], wl_dict["naam"],
+                        result.get("verwijderd_detail", []), result.get("toegevoegd_detail", []))
             if wl_dict.get("instagram_plaatjes") and result.get("status") == "ok":
-                _plaatjes_op_achtergrond(run_id)
+                # De mail wacht op de plaatjes, zodat ze als bijlage mee kunnen.
+                _plaatjes_op_achtergrond(run_id, mail)
+            elif mail:
+                _rotatie_mail(*mail)
         return result
 
     except Exception as e:
@@ -201,17 +200,33 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
         raise
 
 
-def _plaatjes_op_achtergrond(run_id):
-    """Instagram-plaatjes maken zonder de rotatie op te houden. Een fout hier laat de
-    rotatie geslaagd; hij komt in de log en de plaatjes zijn opnieuw te maken via de UI."""
+def _rotatie_mail(adres, naam, verwijderd, toegevoegd, plaatjes=None, plaatjes_fout=None):
+    try:
+        from mail import send_rotation_mail
+        send_rotation_mail(adres, naam, verwijderd, toegevoegd,
+                           plaatjes=plaatjes, plaatjes_fout=plaatjes_fout)
+    except Exception as mail_err:
+        logger.error("Fout bij rotatie-mail", extra={"error": str(mail_err)})
+
+
+def _plaatjes_op_achtergrond(run_id, mail=None):
+    """Instagram-plaatjes maken zonder de rotatie op te houden, en daarna de rotatie-mail
+    (mail = (adres, naam, verwijderd, toegevoegd)) met de plaatjes als bijlage. Een fout
+    bij de plaatjes laat de rotatie geslaagd: hij komt in de log en in de mail, en de
+    plaatjes zijn opnieuw te maken via de UI."""
     import threading
 
     def werk():
+        plaatjes, fout = [], None
         try:
-            from instagram import maak_voor_run
+            from instagram import maak_voor_run, plaatjes_voor_run
             maak_voor_run(run_id)
+            plaatjes = plaatjes_voor_run(run_id)
         except Exception as e:
-            logger.error("Instagram-plaatjes maken mislukt", extra={"run_id": run_id, "error": str(e)})
+            fout = str(e)
+            logger.error("Instagram-plaatjes maken mislukt", extra={"run_id": run_id, "error": fout})
+        if mail:
+            _rotatie_mail(*mail, plaatjes=plaatjes, plaatjes_fout=fout)
 
     threading.Thread(target=werk, daemon=True).start()
 
