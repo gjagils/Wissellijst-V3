@@ -68,3 +68,19 @@ def test_rotatie_detail_bevat_uri(wissellijst, monkeypatch):
     result = automation.rotate_playlist("pl", wissellijst["id"])
     assert result["verwijderd_detail"][0]["uri"] == "spotify:track:OUD"
     assert result["toegevoegd_detail"][0]["uri"] == "spotify:track:NIEUW"
+
+
+def test_verwijderd_decennium_uit_historie(wissellijst, monkeypatch):
+    """Een remaster van 2011 die als 80s binnenkwam, gaat er ook als 80s uit."""
+    class RemasterSp(FakeSp):
+        def playlist_items(self, playlist_id, limit=100):
+            items = super().playlist_items(playlist_id, limit)
+            items["items"][0]["track"]["album"]["release_date"] = "2011-05-01"
+            return items
+    monkeypatch.setattr(automation, "get_spotify_client", lambda: RemasterSp())
+    config.add_historie_bulk(wissellijst["id"], [
+        {"categorie": "80s", "artiest": "Oude", "titel": "Oud", "uri": "spotify:track:OUD"}])
+    config.save_wachtrij(wissellijst["id"], [
+        {"categorie": "80s", "artiest": "Nieuw", "titel": "Erin", "uri": "spotify:track:NIEUW"}])
+    result = automation.rotate_playlist("pl", wissellijst["id"])
+    assert result["verwijderd_detail"][0]["categorie"] == "80s"

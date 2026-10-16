@@ -4,7 +4,7 @@ import re
 
 from config import (
     DISCOVERY_EXPIRE_DAGEN,
-    get_wachtrij, save_wachtrij, clear_wachtrij, add_historie_bulk,
+    get_wachtrij, save_wachtrij, clear_wachtrij, add_historie_bulk, get_historie,
 )
 from spotify_auth import get_spotify_client
 from logging_config import get_logger
@@ -74,6 +74,12 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
     else:
         current_items = _get_all_playlist_items(sp, playlist_id)
 
+    # De categorie waarmee een nummer ooit binnenkwam (bijv. '80s'); de releasedatum is
+    # minder betrouwbaar (remasters en verzamelalbums hebben een latere datum).
+    oorspronkelijk = {}
+    for e in get_historie(wl_id):
+        oorspronkelijk.setdefault(e["uri"], e["categorie"])
+
     tracks_to_remove, removed_tracks_detail, historie_entries = [], [], []
     for item in current_items[:block_size]:
         track = item["track"]
@@ -88,7 +94,8 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
         tracks_to_remove.append(track["uri"])
         removed_tracks_detail.append({"artiest": track["artists"][0]["name"],
                                       "titel": track["name"], "uri": track["uri"],
-                                      "categorie": historie_entries[-1]["categorie"]})
+                                      "categorie": oorspronkelijk.get(track["uri"])
+                                      or historie_entries[-1]["categorie"]})
 
     if historie_entries:
         add_historie_bulk(wl_id, historie_entries)

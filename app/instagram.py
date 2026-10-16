@@ -509,16 +509,22 @@ def maak_voor_run(run_id):
     for w in wijzigingen:
         w["artwork_url"] = hoezen.get(w["uri"], "")
 
-    plaatjes = []
+    plaatjes, redenen = [], []
     for richting, soort in (("IN", "toegevoegd"), ("OUT", "verwijderd")):
-        groepen = groepeer([w for w in wijzigingen if w["type"] == soort])
+        tracks = [w for w in wijzigingen if w["type"] == soort]
+        groepen = groepeer(tracks)
         if not groepen:
+            redenen.append(f"{richting}: geen nummers met een decennium 80s-20s "
+                           f"({len(tracks)} nummers; rotaties van vóór de plaatjes-update "
+                           "hebben geen decennium per nummer)")
             logger.warning("Geen plaatje: geen tracks met een decennium 80s-20s",
                            extra={"run_id": run_id, "richting": richting})
         for deel, groep in enumerate(groepen, start=1):
             asset = maak_asset(groep, rotatienummer, datum, richting, naam)
             fouten = valideer(asset)
             if fouten:
+                redenen.append(f"{richting}" + (f" blok {deel}" if len(groepen) > 1 else "")
+                               + ": " + ", ".join(fouten))
                 logger.warning("Plaatje overgeslagen: rotatie past niet in de stijlgids",
                                extra={"run_id": run_id, "richting": richting, "deel": deel,
                                       "fouten": fouten})
@@ -529,6 +535,8 @@ def maak_voor_run(run_id):
                 bestandsnaam=bestandsnaam(asset, deel), png=png,
                 caption=caption(asset), alt_tekst=alt_tekst(asset)))
 
+    if not plaatjes:
+        raise ValueError("Geen plaatje gemaakt. " + "; ".join(redenen))
     with get_session() as s:
         s.query(RotatieAfbeelding).filter_by(run_id=run_id).delete()
         for p in plaatjes:
