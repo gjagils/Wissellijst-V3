@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post: {{ naam }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #121212; color: #e0e0e0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 16px;
+        }
+        a { color: #1db954; }
+        .knoppen { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;
+            font-size: 0.95em; font-weight: 600; background: #1db954; color: #000;
+        }
+        .btn-secondary { background: #333; color: #e0e0e0; }
+        #melding { color: #b3b3b3; font-size: 0.9em; min-height: 1.2em; text-align: center; }
+
+        /* De kaart is altijd 1080x1350 (Instagram 4:5) en wordt voor het scherm geschaald. */
+        .schaal { width: 1080px; height: 1350px; transform-origin: top left; }
+        .kader { overflow: hidden; }
+        .kaart {
+            width: 1080px; height: 1350px; padding: 72px;
+            background: linear-gradient(160deg, #1a3d2a 0%, #121212 45%, #121212 100%);
+            display: flex; flex-direction: column; color: #fff;
+        }
+        .kop { margin-bottom: 40px; }
+        .label { color: #1db954; font-size: 26px; font-weight: 700; letter-spacing: 6px; text-transform: uppercase; }
+        .naam { font-size: 60px; font-weight: 800; line-height: 1.05; margin-top: 12px; }
+        .datum { color: #b3b3b3; font-size: 30px; margin-top: 10px; }
+
+        .sectie { margin-bottom: 32px; }
+        .sectie h2 { font-size: 28px; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 18px; }
+        .erin h2 { color: #1db954; }
+        .eruit h2 { color: #ff6b6b; }
+        .rij { display: flex; align-items: center; gap: 20px; margin-bottom: 10px; }
+        .hoes { width: 60px; height: 60px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #2a2a2a; }
+        .tekst { min-width: 0; }
+        .titel { font-size: 30px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .artiest { font-size: 24px; color: #b3b3b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .eruit .rij { opacity: 0.6; }
+        .eruit .titel { text-decoration: line-through; text-decoration-color: #ff6b6b; }
+
+        /* Veel nummers: compacter, zodat alles op de kaart past. */
+        .compact .rij { margin-bottom: 6px; gap: 16px; }
+        .compact .hoes { width: 44px; height: 44px; }
+        .compact .titel { font-size: 24px; }
+        .compact .artiest { font-size: 20px; }
+        .compact .naam { font-size: 56px; }
+        .compact .sectie h2 { font-size: 24px; margin-bottom: 12px; }
+        .tekstlijst { padding-top: 14px; }
+        .tekstlijst .rij { display: block; margin-bottom: 6px; }
+        .tekstlijst .hoes { display: none; }
+        .tekstlijst .titel, .tekstlijst .artiest { display: inline; font-size: 20px; }
+        .tekstlijst .artiest::before { content: " – "; }
+
+        .voet { margin-top: auto; color: #6a6a6a; font-size: 24px; }
+
+        .caption { width: 100%; max-width: 640px; }
+        .caption textarea {
+            width: 100%; height: 220px; background: #1e1e1e; color: #e0e0e0;
+            border: 1px solid #333; border-radius: 6px; padding: 12px; font: inherit; font-size: 0.9em;
+        }
+        .leeg { color: #b3b3b3; font-size: 30px; }
+    </style>
+</head>
+<body>
+    {% set totaal = eruit|length + erin|length %}
+    <div class="knoppen">
+        <button class="btn" onclick="downloadPng()">Download als afbeelding</button>
+        <button class="btn btn-secondary" onclick="kopieerCaption()">Kopieer bijschrift</button>
+        <a class="btn btn-secondary" href="/" style="text-decoration:none;">Terug</a>
+    </div>
+    <p id="melding"></p>
+
+    <div class="kader" id="kader">
+        <div class="schaal" id="schaal">
+            <div class="kaart {% if totaal > 10 %}compact{% endif %} {% if totaal > 16 %}tekstlijst{% endif %}" id="kaart">
+                <div class="kop">
+                    <div class="label">Nieuw in de lijst</div>
+                    <div class="naam">{{ naam }}</div>
+                    <div class="datum">{{ datum }}</div>
+                </div>
+
+                {% if not totaal %}
+                    <p class="leeg">Bij deze rotatie is niets vastgelegd.</p>
+                {% endif %}
+
+                {% for soort, tracks in [('erin', erin), ('eruit', eruit)] if tracks %}
+                <div class="sectie {{ soort }}">
+                    <h2>{{ 'Erin' if soort == 'erin' else 'Eruit' }} ({{ tracks|length }})</h2>
+                    {% for t in tracks %}
+                    <div class="rij">
+                        {% if t.hoes %}<img class="hoes" src="{{ t.hoes }}" crossorigin="anonymous" alt="">{% else %}<div class="hoes"></div>{% endif %}
+                        <div class="tekst">
+                            <div class="titel">{{ t.titel }}</div>
+                            <div class="artiest">{{ t.artiest }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+
+                <div class="voet">Wissellijst · elke rotatie nieuwe nummers</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="caption">
+        <textarea id="caption" readonly>{{ caption }}</textarea>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        function schaal() {
+            const breedte = Math.min(window.innerWidth - 40, 540);
+            const f = breedte / 1080;
+            document.getElementById('schaal').style.transform = `scale(${f})`;
+            const kader = document.getElementById('kader');
+            kader.style.width = (1080 * f) + 'px';
+            kader.style.height = (1350 * f) + 'px';
+        }
+        window.addEventListener('resize', schaal);
+        schaal();
+
+        function melding(tekst) { document.getElementById('melding').textContent = tekst; }
+
+        async function downloadPng() {
+            if (typeof html2canvas === 'undefined') {
+                return melding('Downloaden lukt niet (script niet geladen). Maak een screenshot van de kaart.');
+            }
+            melding('Afbeelding maken...');
+            const schaalEl = document.getElementById('schaal');
+            const oud = schaalEl.style.transform;
+            schaalEl.style.transform = 'none';
+            try {
+                const canvas = await html2canvas(document.getElementById('kaart'),
+                    { useCORS: true, backgroundColor: '#121212', scale: 1, width: 1080, height: 1350 });
+                const link = document.createElement('a');
+                link.download = {{ ('wissellijst-' ~ naam ~ '-' ~ datum)|lower|replace(' ', '-')|tojson }} + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                melding('Afbeelding gedownload (1080×1350).');
+            } catch (e) {
+                melding('Downloaden lukt niet: ' + e.message + '. Maak een screenshot van de kaart.');
+            } finally {
+                schaalEl.style.transform = oud;
+            }
+        }
+
+        async function kopieerCaption() {
+            const tekst = document.getElementById('caption').value;
+            try {
+                await navigator.clipboard.writeText(tekst);
+                melding('Bijschrift gekopieerd.');
+            } catch (e) {
+                document.getElementById('caption').select();
+                melding('Selecteer en kopieer het bijschrift handmatig.');
+            }
+        }
+    </script>
+</body>
+</html>
