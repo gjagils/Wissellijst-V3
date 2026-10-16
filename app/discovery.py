@@ -224,8 +224,11 @@ def _score_all(candidates, taste_profile, on_progress=None, totaal=1):
 
 
 def _to_block(tracks):
+    def jaar(t):
+        d = t.get("release_date") or ""
+        return int(d[:4]) if d[:4].isdigit() else None
     return [{"categorie": "discovery", "artiest": t["artiest"],
-             "titel": t["titel"], "uri": t["uri"]} for t in tracks]
+             "titel": t["titel"], "uri": t["uri"], "jaar": jaar(t)} for t in tracks]
 
 
 def generate_discovery_block(sp, wl, block_size=10, wl_id=None):

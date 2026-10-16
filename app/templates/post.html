@@ -130,7 +130,7 @@
                         {% if t.hoes %}<img class="hoes" src="{{ t.hoes }}" crossorigin="anonymous" alt="">{% else %}<div class="hoes"></div>{% endif %}
                         <div class="tekst">
                             <div class="titel">{{ t.titel }}</div>
-                            <div class="artiest">{{ t.artiest }}</div>
+                            <div class="artiest">{{ t.artiest }}{% if t.jaar %} · {{ t.jaar }}{% endif %}</div>
                         </div>
                     </div>
                     {% endfor %}

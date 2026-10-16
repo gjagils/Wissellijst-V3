@@ -1598,7 +1598,7 @@
                         <div class="wachtrij-item">
                             <div>
                                 <span class="historie-item-artiest">${e.artiest}</span>
-                                <span class="historie-item-titel"> \u2014 ${e.titel}</span>
+                                <span class="historie-item-titel"> \u2014 ${e.titel}${e.jaar ? ` <span style="color:#888;">(${e.jaar})</span>` : ''}</span>
                             </div>
                             <div class="item-actions">
                                 <span class="historie-item-cat">${e.categorie}</span>
@@ -1687,11 +1687,21 @@
                     const post = r.status === 'voltooid' && r.wijzigingen.length
                         ? `<a class="btn btn-secondary" style="font-size:0.8em; padding:4px 10px; text-decoration:none;" href="/rotaties/${r.id}/post" target="_blank">Instagram-post</a>`
                         : '';
+                    const regel = w => `<div style="font-size:0.85em; color:${w.type === 'toegevoegd' ? '#1db954' : '#ff6b6b'};">`
+                        + `${w.type === 'toegevoegd' ? '+' : '\u2212'} ${esc(w.artiest)} \u2014 ${esc(w.titel)}`
+                        + `${w.jaar ? ` <span style="color:#888;">(${w.jaar})</span>` : ''}</div>`;
+                    const details = r.wijzigingen.length
+                        ? `<details style="margin-top:4px;"><summary style="cursor:pointer; color:#888; font-size:0.85em;">Nummers</summary>`
+                          + r.wijzigingen.filter(w => w.type === 'toegevoegd').map(regel).join('')
+                          + r.wijzigingen.filter(w => w.type === 'verwijderd').map(regel).join('')
+                          + `</details>`
+                        : '';
                     return `
-                        <div class="historie-item">
+                        <div class="historie-item" style="align-items:flex-start;">
                             <div>
                                 <span class="historie-item-artiest">${esc(wanneer)}</span>
                                 <span class="historie-item-titel"> \u2014 ${status} (${door})</span>
+                                ${details}
                             </div>
                             <div class="item-actions">${post}</div>
                         </div>`;
@@ -1722,7 +1732,7 @@
                         <div class="historie-item">
                             <div>
                                 <span class="historie-item-artiest">${e.artiest}</span>
-                                <span class="historie-item-titel"> \u2014 ${e.titel}</span>
+                                <span class="historie-item-titel"> \u2014 ${e.titel}${e.jaar ? ` <span style="color:#888;">(${e.jaar})</span>` : ''}</span>
                             </div>
                             <div class="item-actions">
                                 <span class="historie-item-cat">${e.categorie}</span>

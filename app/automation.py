@@ -62,7 +62,8 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
 
     new_uris = [e["uri"] for e in queue_entries]
     new_tracks_detail = [{"artiest": e["artiest"], "titel": e["titel"], "uri": e["uri"],
-                          "categorie": e["categorie"]} for e in queue_entries]
+                          "categorie": e["categorie"], "jaar": e.get("jaar")}
+                         for e in queue_entries]
     block_size = len(new_uris)
     sp = get_spotify_client()
 
@@ -78,24 +79,29 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
     # minder betrouwbaar (remasters en verzamelalbums hebben een latere datum).
     oorspronkelijk = {}
     for e in get_historie(wl_id):
-        oorspronkelijk.setdefault(e["uri"], e["categorie"])
+        oorspronkelijk.setdefault(e["uri"], e)
 
     tracks_to_remove, removed_tracks_detail, historie_entries = [], [], []
     for item in current_items[:block_size]:
         track = item["track"]
         if not track:
             continue
+        eerder = oorspronkelijk.get(track["uri"], {})
+        release_date = track["album"]["release_date"]
+        jaar = eerder.get("jaar") or (int(release_date[:4]) if release_date[:4].isdigit() else None)
         historie_entries.append({
-            "categorie": get_decade(track["album"]["release_date"]),
+            "categorie": get_decade(release_date),
             "artiest": track["artists"][0]["name"],
             "titel": track["name"],
             "uri": track["uri"],
+            "jaar": jaar,
         })
         tracks_to_remove.append(track["uri"])
         removed_tracks_detail.append({"artiest": track["artists"][0]["name"],
                                       "titel": track["name"], "uri": track["uri"],
-                                      "categorie": oorspronkelijk.get(track["uri"])
-                                      or historie_entries[-1]["categorie"]})
+                                      "categorie": eerder.get("categorie")
+                                      or historie_entries[-1]["categorie"],
+                                      "jaar": jaar})
 
     if historie_entries:
         add_historie_bulk(wl_id, historie_entries)
