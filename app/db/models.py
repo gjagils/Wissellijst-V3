@@ -29,6 +29,7 @@ class Wissellijst(Base):
     blok_grootte = Column(Integer, default=5)
     blokken_per_rotatie = Column(Integer, default=1)
     populariteit_verdeling = Column(Boolean, default=False)
+    radiolijsten = Column(Boolean, default=False)  # NL-radiolijsten voor kandidaten en populariteit
     max_per_artiest = Column(Integer, default=0)
 
     # Rotatie schema
@@ -73,6 +74,7 @@ class Wissellijst(Base):
             "blok_grootte": self.blok_grootte,
             "blokken_per_rotatie": self.blokken_per_rotatie or 1,
             "populariteit_verdeling": bool(self.populariteit_verdeling),
+            "radiolijsten": bool(self.radiolijsten),
             "max_per_artiest": self.max_per_artiest,
             "rotatie_schema": self.rotatie_schema,
             "rotatie_tijdstip": self.rotatie_tijdstip,
@@ -173,3 +175,44 @@ class SpotifyToken(Base):
     token_info = Column(JSON, nullable=False)
     spotify_user = Column(String(255), default="")
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Radiolijst(Base):
+    """Een NL-radiolijst (bijv. Q-top 500 van de 90s, Top 2000) als bron voor populariteit."""
+    __tablename__ = "radiolijsten"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    naam = Column(String(255), nullable=False)
+    zender = Column(String(100), default="")
+    decennium = Column(String(10), default="")  # bijv. '80s'; leeg = alle decennia
+    spotify_playlist_id = Column(String(64), default="")  # leeg = geplakt als tekst
+    geimporteerd_op = Column(DateTime, default=utcnow)
+
+    entries = relationship("RadiolijstEntry", back_populates="radiolijst",
+                           cascade="all, delete-orphan", order_by="RadiolijstEntry.positie")
+
+    def to_dict(self, aantal=None):
+        return {
+            "id": self.id,
+            "naam": self.naam,
+            "zender": self.zender or "",
+            "decennium": self.decennium or "",
+            "spotify_playlist_id": self.spotify_playlist_id or "",
+            "geimporteerd_op": self.geimporteerd_op.isoformat() if self.geimporteerd_op else "",
+            "aantal": aantal,
+        }
+
+
+class RadiolijstEntry(Base):
+    """Eén nummer op een plek in een radiolijst."""
+    __tablename__ = "radiolijst_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    radiolijst_id = Column(Integer, ForeignKey("radiolijsten.id"), nullable=False, index=True)
+    positie = Column(Integer, nullable=False)
+    artiest = Column(String(255), default="")
+    titel = Column(String(255), default="")
+    uri = Column(String(100), default="", index=True)
+    jaar = Column(Integer, nullable=True)  # releasejaar als bekend (uit Spotify)
+
+    radiolijst = relationship("Radiolijst", back_populates="entries")

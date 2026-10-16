@@ -233,6 +233,18 @@
                 <button class="btn btn-secondary" onclick="nieuweLijst('discovery')">+ Discovery lijst</button>
             </div>
         </div>
+
+        <div class="card">
+            <h2>Radiolijsten</h2>
+            <p class="status-tekst" style="font-size:0.85em; color:#888; margin-bottom:8px;">
+                Top-lijsten van NL-zenders (Q-top 500, Top 2000, ...). Ze geven een NL-populariteit
+                (plek 1 = 100) en een keuzemenu voor GPT bij lijsten met "Gebruik radiolijsten" aan.
+            </p>
+            <div class="historie-lijst" id="radiolijsten-lijst"></div>
+            <div class="btn-row" style="margin-top:12px;">
+                <button class="btn btn-secondary" onclick="openRadioModal()">+ Radiolijst</button>
+            </div>
+        </div>
     </div>
 
     <!-- ============ VIEW: DETAIL ============ -->
@@ -371,6 +383,9 @@
                 <label style="margin-top:12px;">
                     <input type="checkbox" id="populariteit-verdeling"> Spreid populariteit (elk nummer in een blok uit een ander populariteitsvak)
                 </label>
+                <label style="margin-top:8px;">
+                    <input type="checkbox" id="gebruik-radiolijsten"> Gebruik radiolijsten (keuzemenu voor GPT en NL-populariteit)
+                </label>
             </div>
 
             <!-- DISCOVERY velden -->
@@ -485,6 +500,34 @@
         </div>
     </div>
 
+    <div id="radio-modal" class="modal-overlay" onclick="sluitRadioModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Radiolijst toevoegen</h2>
+            <label for="radio-zender">Zender</label>
+            <input type="text" id="radio-zender" placeholder="Qmusic, NPO Radio 2, Veronica, 3FM...">
+            <label for="radio-decennium" style="margin-top:8px;">Decennium</label>
+            <select id="radio-decennium">
+                <option value="">Alle decennia (bijv. Top 2000)</option>
+                <option value="60s">60s</option><option value="70s">70s</option>
+                <option value="80s">80s</option><option value="90s">90s</option>
+                <option value="00s">00s</option><option value="10s">10s</option>
+                <option value="20s">20s</option>
+            </select>
+            <label for="radio-playlist" style="margin-top:8px;">Spotify-playlist (URL of ID)</label>
+            <input type="text" id="radio-playlist" placeholder="https://open.spotify.com/playlist/...">
+            <label for="radio-naam" style="margin-top:8px;">Naam (bij een playlist mag dit leeg)</label>
+            <input type="text" id="radio-naam" placeholder="Q-top 500 van de 90s (2026)">
+            <label for="radio-tekst" style="margin-top:8px;">Of plak de lijst (één nummer per regel)</label>
+            <textarea id="radio-tekst" rows="8"
+                      placeholder="1. Queen - Bohemian Rhapsody&#10;2. Golden Earring - Radar Love (1973)"></textarea>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btn-radio" onclick="importeerRadiolijst()">Importeren</button>
+                <button class="btn btn-secondary" onclick="sluitRadioModal()">Annuleren</button>
+            </div>
+            <p id="radio-status" class="status-tekst hidden" style="margin-top:8px;"></p>
+        </div>
+    </div>
+
     <div id="import-modal" class="modal-overlay" onclick="sluitImportModal(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h2>Historie importeren</h2>
@@ -514,7 +557,94 @@
         // --- Init ---
         async function init() {
             await laadStatus();
-            await Promise.all([laadPlaylists(), laadWissellijsten()]);
+            await Promise.all([laadPlaylists(), laadWissellijsten(), laadRadiolijsten()]);
+        }
+
+        // --- Radiolijsten ---
+        const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+        async function laadRadiolijsten() {
+            const el = document.getElementById('radiolijsten-lijst');
+            try {
+                const lijsten = await (await fetch('/api/radiolijsten')).json();
+                if (!lijsten.length) {
+                    el.innerHTML = '<p style="color:#888; font-size:0.9em;">Nog geen radiolijsten.</p>';
+                    return;
+                }
+                el.innerHTML = lijsten.map(r => `
+                    <div class="historie-item">
+                        <div>
+                            <span class="historie-item-artiest">${escHtml(r.naam)}</span>
+                            <span class="historie-item-titel"> \u2014 ${escHtml(r.zender || 'onbekende zender')} \u00b7 ${r.decennium || 'alle decennia'} \u00b7 ${r.aantal} nummers</span>
+                        </div>
+                        <div class="item-actions">
+                            ${r.spotify_playlist_id ? `<button class="btn-icon" onclick="vernieuwRadiolijst(${r.id})" title="Opnieuw lezen uit Spotify">&#8635;</button>` : ''}
+                            <button class="btn-icon btn-icon-danger" onclick="verwijderRadiolijst(${r.id})" title="Verwijderen">&times;</button>
+                        </div>
+                    </div>`).join('');
+            } catch (e) {
+                el.innerHTML = '';
+                toonMelding('Kan radiolijsten niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        function openRadioModal() {
+            ['radio-zender', 'radio-playlist', 'radio-naam', 'radio-tekst'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('radio-decennium').value = '';
+            document.getElementById('radio-status').classList.add('hidden');
+            document.getElementById('btn-radio').disabled = false;
+            document.getElementById('radio-modal').classList.add('visible');
+        }
+
+        function sluitRadioModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('radio-modal').classList.remove('visible');
+        }
+
+        async function importeerRadiolijst() {
+            const body = {
+                zender: document.getElementById('radio-zender').value.trim(),
+                decennium: document.getElementById('radio-decennium').value,
+                playlist: document.getElementById('radio-playlist').value.trim(),
+                naam: document.getElementById('radio-naam').value.trim(),
+                tekst: document.getElementById('radio-tekst').value,
+            };
+            if (!body.playlist && !body.tekst.trim()) return toonMelding('Geef een Spotify-playlist of plak de lijst.', 'fout');
+            const btn = document.getElementById('btn-radio');
+            const statusEl = document.getElementById('radio-status');
+            btn.disabled = true;
+            statusEl.textContent = 'Importeren...';
+            statusEl.classList.remove('hidden');
+            try {
+                const res = await fetch('/api/radiolijsten', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                });
+                const result = await res.json();
+                if (result.error) {
+                    statusEl.textContent = result.error;
+                    btn.disabled = false;
+                } else {
+                    document.getElementById('radio-modal').classList.remove('visible');
+                    toonMelding(result.tekst, 'ok');
+                    laadRadiolijsten();
+                }
+            } catch (e) {
+                statusEl.textContent = 'Fout: ' + e.message;
+                btn.disabled = false;
+            }
+        }
+
+        async function vernieuwRadiolijst(id) {
+            const res = await fetch(`/api/radiolijsten/${id}/vernieuwen`, { method: 'POST' });
+            const result = await res.json();
+            toonMelding(result.error || result.tekst, result.error ? 'fout' : 'ok');
+            laadRadiolijsten();
+        }
+
+        async function verwijderRadiolijst(id) {
+            if (!confirm('Radiolijst verwijderen?')) return;
+            await fetch(`/api/radiolijsten/${id}`, { method: 'DELETE' });
+            laadRadiolijsten();
         }
 
         // --- Status-banner (Spotify-koppeling, beveiliging, laatste fout) ---
@@ -976,6 +1106,7 @@
             document.getElementById('smaak-preview').textContent = 'Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.';
             document.getElementById('mail-na-rotatie').checked = false;
             document.getElementById('populariteit-verdeling').checked = false;
+            document.getElementById('gebruik-radiolijsten').checked = false;
             document.getElementById('mail-adres').value = '';
 
             onRotatieSchemaChange();
@@ -1010,6 +1141,7 @@
             document.getElementById('smaak-preview').textContent = wl.smaakprofiel || 'Nog geen smaakprofiel. Klik op ophalen.';
             document.getElementById('mail-na-rotatie').checked = !!wl.mail_na_rotatie;
             document.getElementById('populariteit-verdeling').checked = !!wl.populariteit_verdeling;
+            document.getElementById('gebruik-radiolijsten').checked = !!wl.radiolijsten;
             document.getElementById('mail-adres').value = wl.mail_adres || '';
 
             onRotatieSchemaChange();
@@ -1133,6 +1265,7 @@
                 if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorie\u00ebn in.', 'fout');
                 body.categorieen = categorieen;
                 body.populariteit_verdeling = document.getElementById('populariteit-verdeling').checked;
+                body.radiolijsten = document.getElementById('gebruik-radiolijsten').checked;
             }
 
             if (editLijstId) body.id = editLijstId;

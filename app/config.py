@@ -27,6 +27,10 @@ DISCOVERY_MAX_MAANDEN = int(os.getenv("DISCOVERY_MAX_MAANDEN", "3"))
 DISCOVERY_EXPIRE_DAGEN = int(os.getenv("DISCOVERY_EXPIRE_DAGEN", "30"))
 # Populariteitsvakken (Spotify popularity 0-100) voor lijsten met populariteitsverdeling aan
 POPULARITEIT_VAKKEN = os.getenv("POPULARITEIT_VAKKEN", "30-50,50-70,70-80,80-90,90-100")
+# NL-radiolijsten: plek 1 krijgt score 100, de laatste plek RADIO_SCORE_MIN
+RADIO_SCORE_MIN = int(os.getenv("RADIO_SCORE_MIN", "30"))
+# Hoeveel nummers uit de radiolijsten GPT per categorie als keuzemenu krijgt
+RADIO_KANDIDATEN_PER_CATEGORIE = int(os.getenv("RADIO_KANDIDATEN_PER_CATEGORIE", "25"))
 
 # --- Database ---
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -58,7 +62,7 @@ def load_wissellijsten():
 
 _WL_VELDEN = ("naam", "playlist_id", "type", "categorieen", "bron_playlists",
               "aantal_blokken", "blok_grootte", "blokken_per_rotatie", "max_per_artiest",
-              "populariteit_verdeling",
+              "populariteit_verdeling", "radiolijsten",
               "rotatie_schema", "rotatie_tijdstip", "rotatie_dag",
               "mail_na_rotatie", "mail_adres", "smaakprofiel")
 
@@ -100,6 +104,7 @@ def save_wissellijst(wl_data):
                 blok_grootte=wl_data.get("blok_grootte", 5),
                 blokken_per_rotatie=wl_data.get("blokken_per_rotatie", 1),
                 populariteit_verdeling=wl_data.get("populariteit_verdeling", False),
+                radiolijsten=wl_data.get("radiolijsten", False),
                 max_per_artiest=wl_data.get("max_per_artiest", 0),
                 rotatie_schema=wl_data.get("rotatie_schema", "uit"),
                 rotatie_tijdstip=wl_data.get("rotatie_tijdstip", "08:00"),

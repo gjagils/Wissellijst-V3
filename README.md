@@ -61,7 +61,7 @@ Tests: `pytest -q` (geen externe diensten nodig).
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | nee | mail na rotatie en alarm |
 | `TZ` / `SCHEDULER_TZ` | nee | tijdzone van de rotatie-tijden (default Europe/Amsterdam) |
 | `OPENAI_MODEL`, `OPENAI_SCORE_MODEL` | nee | gpt-4o / gpt-4o-mini |
-| `SUGGESTIES_PER_CATEGORIE`, `MAX_REASKS`, `BLOK_ACCEPT_RATIO`, `DISCOVERY_MAX_MAANDEN`, `DISCOVERY_EXPIRE_DAGEN`, `POPULARITEIT_VAKKEN` | nee | gedrag van de generatie, zie `.env.example` |
+| `SUGGESTIES_PER_CATEGORIE`, `MAX_REASKS`, `BLOK_ACCEPT_RATIO`, `DISCOVERY_MAX_MAANDEN`, `DISCOVERY_EXPIRE_DAGEN`, `POPULARITEIT_VAKKEN`, `RADIO_SCORE_MIN`, `RADIO_KANDIDATEN_PER_CATEGORIE` | nee | gedrag van de generatie, zie `.env.example` |
 
 **Waar de secrets staan:** in de Portainer-stack (Stacks, wissellijst, Editor, Environment variables).
 De deploy-workflow stuurt die ongewijzigd door; GitHub-secrets zijn alleen nodig voor Tailscale en
