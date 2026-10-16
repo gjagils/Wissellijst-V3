@@ -361,6 +361,9 @@
                     <button class="btn btn-secondary" onclick="categorieToevoegen()" style="font-size:0.85em; padding:6px 14px;">+ Categorie</button>
                     <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
                 </div>
+                <label style="margin-top:12px;">
+                    <input type="checkbox" id="populariteit-verdeling"> Spreid populariteit (elk nummer in een blok uit een ander populariteitsvak)
+                </label>
             </div>
 
             <!-- DISCOVERY velden -->
@@ -963,6 +966,7 @@
             document.getElementById('smaakprofiel-data').value = '';
             document.getElementById('smaak-preview').textContent = 'Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.';
             document.getElementById('mail-na-rotatie').checked = false;
+            document.getElementById('populariteit-verdeling').checked = false;
             document.getElementById('mail-adres').value = '';
 
             onRotatieSchemaChange();
@@ -996,6 +1000,7 @@
             document.getElementById('smaakprofiel-data').value = wl.smaakprofiel || '';
             document.getElementById('smaak-preview').textContent = wl.smaakprofiel || 'Nog geen smaakprofiel. Klik op ophalen.';
             document.getElementById('mail-na-rotatie').checked = !!wl.mail_na_rotatie;
+            document.getElementById('populariteit-verdeling').checked = !!wl.populariteit_verdeling;
             document.getElementById('mail-adres').value = wl.mail_adres || '';
 
             onRotatieSchemaChange();
@@ -1118,6 +1123,7 @@
                 const categorieen = Array.from(catInputs).map(i => i.value.trim()).filter(Boolean);
                 if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorie\u00ebn in.', 'fout');
                 body.categorieen = categorieen;
+                body.populariteit_verdeling = document.getElementById('populariteit-verdeling').checked;
             }
 
             if (editLijstId) body.id = editLijstId;

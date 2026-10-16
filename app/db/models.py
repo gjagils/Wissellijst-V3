@@ -28,6 +28,7 @@ class Wissellijst(Base):
     aantal_blokken = Column(Integer, default=10)
     blok_grootte = Column(Integer, default=5)
     blokken_per_rotatie = Column(Integer, default=1)
+    populariteit_verdeling = Column(Boolean, default=False)
     max_per_artiest = Column(Integer, default=0)
 
     # Rotatie schema
@@ -71,6 +72,7 @@ class Wissellijst(Base):
             "aantal_blokken": self.aantal_blokken,
             "blok_grootte": self.blok_grootte,
             "blokken_per_rotatie": self.blokken_per_rotatie or 1,
+            "populariteit_verdeling": bool(self.populariteit_verdeling),
             "max_per_artiest": self.max_per_artiest,
             "rotatie_schema": self.rotatie_schema,
             "rotatie_tijdstip": self.rotatie_tijdstip,
