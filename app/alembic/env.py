@@ -1,4 +1,5 @@
 """Alembic environment configuration voor Wissellijst V3."""
+import logging
 import os
 from logging.config import fileConfig
 
@@ -10,8 +11,10 @@ from db.models import Base
 # Alembic Config object
 config = context.config
 
-# Logging configuratie
-if config.config_file_name is not None:
+# Logging configuratie: alleen bij gebruik vanaf de command line. Draaien de migraties
+# bij de start van de app, dan is de logging al ingesteld (logging_config) en zou
+# fileConfig die overschrijven: niveau WARN, geen JSON, en alle bestaande app-loggers uit.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 # SQLAlchemy MetaData voor autogenerate

@@ -566,9 +566,6 @@ def api_rotatie_plaatjes(run_id):
         task["voortgang"] = 20
         task["tekst"] = "Plaatjes maken (illustratie en tekst)..."
         aantal = maak_voor_run(run_id)
-        if not aantal:
-            raise RuntimeError("Geen plaatje gemaakt: deze rotatie heeft geen vijf nummers "
-                               "uit de decennia 80s tot en met 20s")
         task["tekst"] = f"{aantal} plaatjes gemaakt"
         task["resultaat"] = {"aantal": aantal}
 

@@ -149,3 +149,20 @@ def test_rotatie_start_plaatjes_alleen_als_aan(client, wissellijst, monkeypatch)
     client.post("/api/wissellijsten", json={**wissellijst, "instagram_plaatjes": True})
     scheduler._execute_rotation(wissellijst["id"])
     assert len(gestart) == 1
+
+
+def test_geen_plaatje_geeft_reden(wissellijst, monkeypatch):
+    import pytest
+    monkeypatch.setattr(ig, "_hoes_urls", lambda uris: {})
+    with get_session() as s:
+        run = RotatieRun(wissellijst_id=wissellijst["id"], status="voltooid",
+                         started_at=datetime.datetime(2026, 10, 16, 6, 0))
+        s.add(run)
+        s.flush()
+        s.add(RotatieWijziging(run_id=run.id, type="toegevoegd", artiest="A", titel="T", categorie=""))
+        s.add(RotatieWijziging(run_id=run.id, type="verwijderd", artiest="B", titel="U", categorie="80s"))
+        run_id = run.id
+    with pytest.raises(ValueError) as e:
+        ig.maak_voor_run(run_id)
+    assert "IN: geen nummers met een decennium" in str(e.value)
+    assert "OUT: 1 tracks in plaats van 5" in str(e.value)
