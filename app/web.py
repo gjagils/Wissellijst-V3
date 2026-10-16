@@ -21,7 +21,7 @@ from config import (  # noqa: E402
 )
 import spotify_auth  # noqa: E402
 from spotify_auth import get_spotify_client  # noqa: E402
-from suggest import initial_fill, search_spotify, generate_block  # noqa: E402
+from suggest import initial_fill, search_spotify, generate_blocks  # noqa: E402
 from discovery import build_taste_profile, generate_discovery_block, initial_fill_discovery  # noqa: E402
 from mail import mail_configured  # noqa: E402
 from validators import validate_wissellijst_config  # noqa: E402
@@ -365,6 +365,7 @@ def api_vullen():
             result = initial_fill(wl["playlist_id"], wl.get("categorieen", []), lijst_id,
                                   max_per_artiest=wl.get("max_per_artiest", 0),
                                   aantal_blokken=wl.get("aantal_blokken", 10),
+                                  blokken_per_rotatie=wl.get("blokken_per_rotatie", 1),
                                   on_progress=on_progress)
         task["tekst"] = f"{result['toegevoegd']} nummers toegevoegd ({result['blokken']} blokken)"
         task["resultaat"] = result
@@ -462,22 +463,23 @@ def api_wachtrij_genereer(lijst_id):
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
+    per_rotatie = wl.get("blokken_per_rotatie", 1)
+
     def werk(task):
         task["voortgang"] = 20
         sp = get_spotify_client()
         if wl.get("type") == "discovery":
             task["tekst"] = "Bronlijsten scannen en scoren..."
-            block = generate_discovery_block(sp, wl, block_size=wl.get("blok_grootte", 10),
-                                             wl_id=lijst_id)
+            block = generate_discovery_block(
+                sp, wl, block_size=wl.get("blok_grootte", 10) * per_rotatie, wl_id=lijst_id)
         else:
-            task["tekst"] = "Nieuw blokje genereren..."
-            block = None
-            for attempt in range(3):
-                task["voortgang"] = 20 + attempt * 25
-                block = generate_block(sp, wl["playlist_id"], wl.get("categorieen", []),
-                                       lijst_id, wl.get("max_per_artiest", 0))
-                if block:
-                    break
+            def on_progress(blok_nr, aantal):
+                task["voortgang"] = 20 + round((blok_nr - 1) / aantal * 70)
+                task["tekst"] = (f"Blokje {blok_nr}/{aantal} genereren..." if aantal > 1
+                                 else "Nieuw blokje genereren...")
+            block = generate_blocks(sp, wl["playlist_id"], wl.get("categorieen", []), lijst_id,
+                                    wl.get("max_per_artiest", 0), aantal=per_rotatie,
+                                    on_progress=on_progress)
         if not block:
             raise RuntimeError("Kon geen blokje genereren")
         save_wachtrij(lijst_id, block)

@@ -395,6 +395,9 @@
             <label for="aantal-blokken" style="margin-top:12px;">Aantal blokken</label>
             <input type="number" id="aantal-blokken" min="1" max="50" value="10" placeholder="10">
 
+            <label for="blokken-per-rotatie" style="margin-top:12px;">Blokken per rotatie</label>
+            <input type="number" id="blokken-per-rotatie" min="1" max="50" value="1" placeholder="1">
+
             <label for="max-per-artiest" style="margin-top:12px;">Max liedjes per artiest (0 = onbeperkt)</label>
             <input type="number" id="max-per-artiest" min="0" max="99" value="0" placeholder="0 = onbeperkt">
 
@@ -826,7 +829,9 @@
             document.getElementById('detail-naam').textContent = wl.naam;
             document.getElementById('detail-playlist').textContent = playlistNaam;
 
-            const maxInfo = wl.max_per_artiest ? `Max ${wl.max_per_artiest}/artiest` : 'Geen artiest-limiet';
+            const perRotatie = wl.blokken_per_rotatie || 1;
+            const maxInfo = (perRotatie > 1 ? `${perRotatie} blokken per rotatie \u00b7 ` : '')
+                + (wl.max_per_artiest ? `Max ${wl.max_per_artiest}/artiest` : 'Geen artiest-limiet');
             const trackInfo = playlist ? `${playlist.tracks}/${verwachteTracks} tracks` : '';
 
             if (isDiscovery) {
@@ -950,6 +955,7 @@
             document.getElementById('naam').value = '';
             document.getElementById('playlist-select').value = '';
             document.getElementById('max-per-artiest').value = '0';
+            document.getElementById('blokken-per-rotatie').value = '1';
             document.getElementById('rotatie-schema').value = type === 'discovery' ? 'wekelijks' : 'uit';
             document.getElementById('rotatie-tijdstip').value = '08:00';
             document.getElementById('rotatie-dag').value = '0';
@@ -982,6 +988,7 @@
             document.getElementById('playlist-select').value = wl.playlist_id;
             document.getElementById('max-per-artiest').value = wl.max_per_artiest || 0;
             document.getElementById('aantal-blokken').value = wl.aantal_blokken || (type === 'discovery' ? 5 : 10);
+            document.getElementById('blokken-per-rotatie').value = wl.blokken_per_rotatie || 1;
             document.getElementById('rotatie-schema').value = wl.rotatie_schema || 'uit';
             document.getElementById('rotatie-tijdstip').value = wl.rotatie_tijdstip || '08:00';
             document.getElementById('rotatie-dag').value = wl.rotatie_dag || 0;
@@ -1076,6 +1083,8 @@
 
             const maxPerArtiest = parseInt(document.getElementById('max-per-artiest').value) || 0;
             const aantalBlokken = parseInt(document.getElementById('aantal-blokken').value) || (type === 'discovery' ? 5 : 10);
+            const blokkenPerRotatie = parseInt(document.getElementById('blokken-per-rotatie').value) || 1;
+            if (blokkenPerRotatie > aantalBlokken) return toonMelding('Blokken per rotatie mag niet meer zijn dan het aantal blokken.', 'fout');
             const rotatieSchema = document.getElementById('rotatie-schema').value;
             const rotatieTijdstip = document.getElementById('rotatie-tijdstip').value || '08:00';
             const rotatieDag = parseInt(document.getElementById('rotatie-dag').value) || 0;
@@ -1086,6 +1095,7 @@
                 playlist_id: playlistId,
                 max_per_artiest: maxPerArtiest,
                 aantal_blokken: aantalBlokken,
+                blokken_per_rotatie: blokkenPerRotatie,
                 rotatie_schema: rotatieSchema,
                 rotatie_tijdstip: rotatieTijdstip,
                 rotatie_dag: rotatieDag,

@@ -210,8 +210,11 @@ def _process_suggestions(raw_suggestions, categorieen, filled, skipped,
             break
 
 
-def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0):
+def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_gekozen=None):
     """Genereer één blok (1 track per categorie), gevalideerd op Spotify.
+
+    al_gekozen: tracks die al voor dit wachtrij-blok gekozen zijn (niet herhalen, telt
+    mee voor de artiest-limiet).
 
     1. GPT: N suggesties per categorie.
     2. Valideer: artiest-limiet, Spotify, historie, decennium.
@@ -227,7 +230,9 @@ def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0):
         return None
 
     active_artists = [t["track"]["artists"][0]["name"] for t in current_tracks if t.get("track")]
+    active_artists += [t["artiest"] for t in (al_gekozen or [])]
     history_artists, history_uris, artist_counts = load_history(wl_id)
+    history_uris = history_uris + [t["uri"] for t in (al_gekozen or [])]
     for a in active_artists:
         artist_counts[a] = artist_counts.get(a, 0) + 1
 
@@ -275,9 +280,32 @@ def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0):
     return None
 
 
+def generate_blocks(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, aantal=1,
+                    on_progress=None):
+    """Genereer `aantal` blokken achter elkaar voor de wachtrij (3 pogingen per blok).
+
+    Returns de tracks van alle gelukte blokken, of None als geen enkel blok lukte.
+    """
+    tracks = []
+    for blok_nr in range(1, aantal + 1):
+        if on_progress:
+            on_progress(blok_nr, aantal)
+        block = None
+        for _ in range(3):
+            block = generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest,
+                                   al_gekozen=tracks)
+            if block:
+                break
+        if block:
+            tracks.extend(block)
+        else:
+            logger.warning("Wachtrij-blok mislukt", extra={"blok": blok_nr, "aantal": aantal})
+    return tracks or None
+
+
 def initial_fill(playlist_id, categorieen, wl_id, max_per_artiest=0,
-                 aantal_blokken=10, on_progress=None):
-    """Vul een playlist met N blokken plus één wachtrij-blok."""
+                 aantal_blokken=10, blokken_per_rotatie=1, on_progress=None):
+    """Vul een playlist met N blokken plus de wachtrij (blokken_per_rotatie blokken)."""
     sp = get_spotify_client()
     block_size = len(categorieen)
     bestaande_tracks = sp.playlist_tracks(playlist_id, fields="total")["total"]
@@ -295,11 +323,15 @@ def initial_fill(playlist_id, categorieen, wl_id, max_per_artiest=0,
         if on_progress:
             on_progress(blok_nr, totaal, f"Genereren {label}...")
 
-        block = None
-        for _ in range(3):
-            block = generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest)
-            if block:
-                break
+        if is_wachtrij:
+            block = generate_blocks(sp, playlist_id, categorieen, wl_id, max_per_artiest,
+                                    aantal=blokken_per_rotatie)
+        else:
+            block = None
+            for _ in range(3):
+                block = generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest)
+                if block:
+                    break
         if not block:
             mislukt += 1
             continue
