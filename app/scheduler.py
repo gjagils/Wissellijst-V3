@@ -158,7 +158,8 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
                     session.add(RotatieWijziging(run_id=run_id, type=soort,
                                                  artiest=track.get("artiest", ""),
                                                  titel=track.get("titel", ""),
-                                                 uri=track.get("uri", "")))
+                                                 uri=track.get("uri", ""),
+                                                 categorie=track.get("categorie", "")))
             wl = session.get(Wissellijst, wissellijst_id)
             if result.get("status") == "ok":
                 wl.laatste_rotatie = utcnow()
@@ -183,6 +184,8 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
                                        result.get("toegevoegd_detail", []))
                 except Exception as mail_err:
                     logger.error("Fout bij rotatie-mail", extra={"error": str(mail_err)})
+            if wl_dict.get("instagram_plaatjes") and result.get("status") == "ok":
+                _plaatjes_op_achtergrond(run_id)
         return result
 
     except Exception as e:
@@ -195,6 +198,21 @@ def _execute_rotation(wissellijst_id, triggered_by="scheduler"):
                                                "run_id": run_id, "error": str(e)})
         notify_failure(wl_dict.get("naam", wissellijst_id), e, triggered_by)
         raise
+
+
+def _plaatjes_op_achtergrond(run_id):
+    """Instagram-plaatjes maken zonder de rotatie op te houden. Een fout hier laat de
+    rotatie geslaagd; hij komt in de log en de plaatjes zijn opnieuw te maken via de UI."""
+    import threading
+
+    def werk():
+        try:
+            from instagram import maak_voor_run
+            maak_voor_run(run_id)
+        except Exception as e:
+            logger.error("Instagram-plaatjes maken mislukt", extra={"run_id": run_id, "error": str(e)})
+
+    threading.Thread(target=werk, daemon=True).start()
 
 
 def get_scheduler():

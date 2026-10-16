@@ -1,7 +1,7 @@
 """SQLAlchemy modellen voor Wissellijst V3."""
 import datetime
 from sqlalchemy import (
-    Column, String, Integer, Text, Boolean, DateTime, ForeignKey, JSON,
+    Column, String, Integer, Text, Boolean, DateTime, ForeignKey, JSON, LargeBinary,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -30,6 +30,7 @@ class Wissellijst(Base):
     blokken_per_rotatie = Column(Integer, default=1)
     populariteit_verdeling = Column(Boolean, default=False)
     radiolijsten = Column(Boolean, default=False)  # NL-radiolijsten voor kandidaten en populariteit
+    instagram_plaatjes = Column(Boolean, default=False)  # na elke rotatie IN/OUT-plaatjes maken
     max_per_artiest = Column(Integer, default=0)
 
     # Rotatie schema
@@ -75,6 +76,7 @@ class Wissellijst(Base):
             "blokken_per_rotatie": self.blokken_per_rotatie or 1,
             "populariteit_verdeling": bool(self.populariteit_verdeling),
             "radiolijsten": bool(self.radiolijsten),
+            "instagram_plaatjes": bool(self.instagram_plaatjes),
             "max_per_artiest": self.max_per_artiest,
             "rotatie_schema": self.rotatie_schema,
             "rotatie_tijdstip": self.rotatie_tijdstip,
@@ -216,3 +218,18 @@ class RadiolijstEntry(Base):
     jaar = Column(Integer, nullable=True)  # releasejaar als bekend (uit Spotify)
 
     radiolijst = relationship("Radiolijst", back_populates="entries")
+
+
+class RotatieAfbeelding(Base):
+    """Instagram-plaatje (PNG) van een rotatie: richting 'in' of 'out', deel = blok-nummer."""
+    __tablename__ = "rotatie_afbeeldingen"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("rotatie_runs.id"), nullable=False, index=True)
+    richting = Column(String(3), nullable=False)
+    deel = Column(Integer, default=1)
+    bestandsnaam = Column(String(120), default="")
+    png = Column(LargeBinary, nullable=False)
+    caption = Column(Text, default="")
+    alt_tekst = Column(Text, default="")
+    created_at = Column(DateTime, default=utcnow)

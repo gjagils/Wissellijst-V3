@@ -61,8 +61,8 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
         return {"status": "leeg", "tekst": "Wachtrij is leeg."}
 
     new_uris = [e["uri"] for e in queue_entries]
-    new_tracks_detail = [{"artiest": e["artiest"], "titel": e["titel"], "uri": e["uri"]}
-                         for e in queue_entries]
+    new_tracks_detail = [{"artiest": e["artiest"], "titel": e["titel"], "uri": e["uri"],
+                          "categorie": e["categorie"]} for e in queue_entries]
     block_size = len(new_uris)
     sp = get_spotify_client()
 
@@ -87,7 +87,8 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
         })
         tracks_to_remove.append(track["uri"])
         removed_tracks_detail.append({"artiest": track["artists"][0]["name"],
-                                      "titel": track["name"], "uri": track["uri"]})
+                                      "titel": track["name"], "uri": track["uri"],
+                                      "categorie": historie_entries[-1]["categorie"]})
 
     if historie_entries:
         add_historie_bulk(wl_id, historie_entries)

@@ -541,6 +541,40 @@ def api_rotaties(lijst_id):
         } for run in runs])
 
 
+@app.route("/rotaties/<int:run_id>/plaatje/<int:afbeelding_id>.png")
+def rotatie_plaatje(run_id, afbeelding_id):
+    """Een Instagram-plaatje van een rotatie (download met ?download=1)."""
+    from flask import Response
+    from db.session import get_session
+    from db.models import RotatieAfbeelding
+    with get_session() as s:
+        afb = s.get(RotatieAfbeelding, afbeelding_id)
+        if not afb or afb.run_id != run_id:
+            return "Plaatje niet gevonden", 404
+        png, naam = afb.png, afb.bestandsnaam
+    headers = {"Cache-Control": "private, max-age=3600"}
+    if request.args.get("download"):
+        headers["Content-Disposition"] = f'attachment; filename="{naam}"'
+    return Response(png, mimetype="image/png", headers=headers)
+
+
+@app.route("/api/rotaties/<int:run_id>/plaatjes", methods=["POST"])
+def api_rotatie_plaatjes(run_id):
+    """Maak de Instagram-plaatjes van een rotatie (opnieuw), async."""
+    def werk(task):
+        from instagram import maak_voor_run
+        task["voortgang"] = 20
+        task["tekst"] = "Plaatjes maken (illustratie en tekst)..."
+        aantal = maak_voor_run(run_id)
+        if not aantal:
+            raise RuntimeError("Geen plaatje gemaakt: deze rotatie heeft geen vijf nummers "
+                               "uit de decennia 80s tot en met 20s")
+        task["tekst"] = f"{aantal} plaatjes gemaakt"
+        task["resultaat"] = {"aantal": aantal}
+
+    return _run_task(_new_task("Plaatjes maken..."), werk)
+
+
 @app.route("/rotaties/<int:run_id>/post")
 def rotatie_post(run_id):
     """Instagram-post van een rotatie: wat eruit ging en wat erin kwam."""
@@ -548,7 +582,7 @@ def rotatie_post(run_id):
     data = post_data(run_id)
     if not data:
         return "Rotatie niet gevonden", 404
-    return render_template("post.html", **data)
+    return render_template("post.html", run_id=run_id, **data)
 
 
 # --- Radiolijsten (NL-populariteit) ---

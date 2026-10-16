@@ -18,6 +18,10 @@ SPOTIFY_SCOPE = "playlist-read-private playlist-modify-public playlist-modify-pr
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")              # suggesties per categorie
 OPENAI_SCORE_MODEL = os.getenv("OPENAI_SCORE_MODEL", "gpt-4o-mini")  # discovery-scoring
+OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")    # Instagram-illustratie
+OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")      # low, medium of high
+# Instagram-plaatjes: achtergrondillustratie van het beeldmodel (0 = zelf getekende achtergrond)
+INSTAGRAM_AI_ILLUSTRATIE = os.getenv("INSTAGRAM_AI_ILLUSTRATIE", "1") == "1"
 
 # --- Gedrag van de generatie ---
 SUGGESTIES_PER_CATEGORIE = int(os.getenv("SUGGESTIES_PER_CATEGORIE", "5"))
@@ -62,7 +66,7 @@ def load_wissellijsten():
 
 _WL_VELDEN = ("naam", "playlist_id", "type", "categorieen", "bron_playlists",
               "aantal_blokken", "blok_grootte", "blokken_per_rotatie", "max_per_artiest",
-              "populariteit_verdeling", "radiolijsten",
+              "populariteit_verdeling", "radiolijsten", "instagram_plaatjes",
               "rotatie_schema", "rotatie_tijdstip", "rotatie_dag",
               "mail_na_rotatie", "mail_adres", "smaakprofiel")
 
@@ -105,6 +109,7 @@ def save_wissellijst(wl_data):
                 blokken_per_rotatie=wl_data.get("blokken_per_rotatie", 1),
                 populariteit_verdeling=wl_data.get("populariteit_verdeling", False),
                 radiolijsten=wl_data.get("radiolijsten", False),
+                instagram_plaatjes=wl_data.get("instagram_plaatjes", False),
                 max_per_artiest=wl_data.get("max_per_artiest", 0),
                 rotatie_schema=wl_data.get("rotatie_schema", "uit"),
                 rotatie_tijdstip=wl_data.get("rotatie_tijdstip", "08:00"),
