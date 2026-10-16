@@ -145,7 +145,8 @@ def rotate_and_regenerate(wl):
     def nieuw_blok():
         return generate_blocks(sp, wl["playlist_id"], wl.get("categorieen", []), wl_id,
                                wl.get("max_per_artiest", 0),
-                               aantal=wl.get("blokken_per_rotatie", 1))
+                               aantal=wl.get("blokken_per_rotatie", 1),
+                               populariteit=wl.get("populariteit_verdeling", False))
 
     # Lege wachtrij: eerst een blok genereren, anders blijft de lijst hangen.
     if not get_wachtrij(wl_id):

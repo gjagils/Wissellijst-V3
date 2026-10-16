@@ -366,6 +366,7 @@ def api_vullen():
                                   max_per_artiest=wl.get("max_per_artiest", 0),
                                   aantal_blokken=wl.get("aantal_blokken", 10),
                                   blokken_per_rotatie=wl.get("blokken_per_rotatie", 1),
+                                  populariteit=wl.get("populariteit_verdeling", False),
                                   on_progress=on_progress)
         task["tekst"] = f"{result['toegevoegd']} nummers toegevoegd ({result['blokken']} blokken)"
         task["resultaat"] = result
@@ -479,7 +480,8 @@ def api_wachtrij_genereer(lijst_id):
                                  else "Nieuw blokje genereren...")
             block = generate_blocks(sp, wl["playlist_id"], wl.get("categorieen", []), lijst_id,
                                     wl.get("max_per_artiest", 0), aantal=per_rotatie,
-                                    on_progress=on_progress)
+                                    on_progress=on_progress,
+                                    populariteit=wl.get("populariteit_verdeling", False))
         if not block:
             raise RuntimeError("Kon geen blokje genereren")
         save_wachtrij(lijst_id, block)

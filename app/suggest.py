@@ -6,12 +6,13 @@ from openai import OpenAI
 
 from config import (
     OPENAI_API_KEY, OPENAI_MODEL, SUGGESTIES_PER_CATEGORIE, MAX_REASKS,
-    BLOK_ACCEPT_RATIO,
+    BLOK_ACCEPT_RATIO, POPULARITEIT_VAKKEN,
     get_historie, get_historie_uris, add_historie_bulk, save_wachtrij,
 )
 from spotify_auth import get_spotify_client  # noqa: F401  (re-export voor callers)
 from logging_config import get_logger
 from validators import validate_artist_limit, validate_history, validate_decade
+from populariteit import Verdeling, parse_vakken
 
 logger = get_logger(__name__)
 
@@ -21,11 +22,15 @@ def _openai():
 
 
 def search_spotify(sp, artist, title):
-    """Zoek een track op Spotify; returns {"uri", "release_date"} of None."""
+    """Zoek een track op Spotify; returns {"uri", "release_date", "popularity"} of None.
+
+    popularity is None als Spotify het veld niet meer meestuurt.
+    """
     def _extract(track):
         return {
             "uri": track["uri"],
             "release_date": track.get("album", {}).get("release_date", ""),
+            "popularity": track.get("popularity"),
         }
 
     try:
@@ -78,10 +83,12 @@ def load_history(wl_id):
     return artists, uris, artist_counts
 
 
-def _prompt_tail():
+def _prompt_tail(verdeling=None):
+    hint = verdeling.prompt_hint() if verdeling else ""
+    stijl = hint or ("Wees creatief en kies GEEN voor de hand liggende artiesten. "
+                     "Denk aan minder bekende maar geldige nummers.\n")
     return (
-        "Wees creatief en kies GEEN voor de hand liggende artiesten. "
-        "Denk aan minder bekende maar geldige nummers.\n"
+        stijl +
         "Zorg dat alle artiesten VERSCHILLEND zijn.\n"
         "Syntax per regel: categorie | artiest | titel\n"
         "Geef ALLEEN de regels, geen extra tekst."
@@ -104,7 +111,7 @@ def _ask(prompt):
 
 
 def ask_gpt_for_suggestions(categorieen, exclude_artists, blocked_artists=None,
-                            per_categorie=SUGGESTIES_PER_CATEGORIE):
+                            per_categorie=SUGGESTIES_PER_CATEGORIE, verdeling=None):
     """Eerste ronde: suggesties per categorie."""
     cat_beschrijving = ", ".join(f"{i+1}. {c}" for i, c in enumerate(categorieen))
     totaal = len(categorieen) * per_categorie
@@ -117,11 +124,12 @@ def ask_gpt_for_suggestions(categorieen, exclude_artists, blocked_artists=None,
                    f"{', '.join(blocked_artists)}.\n")
     if exclude_artists:
         prompt += f"Liever niet (staan al in playlist): {', '.join(exclude_artists[:60])}.\n"
-    return _ask(prompt + _prompt_tail())
+    return _ask(prompt + _prompt_tail(verdeling))
 
 
 def _ask_gpt_replacements(missing_cats, skipped_info, exclude_artists,
-                          blocked_artists=None, per_categorie=SUGGESTIES_PER_CATEGORIE):
+                          blocked_artists=None, per_categorie=SUGGESTIES_PER_CATEGORIE,
+                          verdeling=None):
     """Re-ask voor missende categorieën, met context over wat eerder faalde."""
     cat_beschrijving = ", ".join(f"{i+1}. {c}" for i, c in enumerate(missing_cats))
     totaal = len(missing_cats) * per_categorie
@@ -142,7 +150,7 @@ def _ask_gpt_replacements(missing_cats, skipped_info, exclude_artists,
         prompt += f"VERBODEN artiesten (ABSOLUUT NIET GEBRUIKEN): {', '.join(blocked_artists)}.\n"
     if exclude_artists:
         prompt += f"Liever niet (staan al in playlist): {', '.join(exclude_artists[:60])}.\n"
-    return _ask(prompt + _prompt_tail())
+    return _ask(prompt + _prompt_tail(verdeling))
 
 
 def _extract_decade(category):
@@ -166,7 +174,7 @@ def _match_categorie(raw_cat, categorieen, filled):
 
 
 def _process_suggestions(raw_suggestions, categorieen, filled, skipped,
-                         used_uris, artist_counts, max_per_artiest, sp):
+                         used_uris, artist_counts, max_per_artiest, sp, verdeling=None):
     """Valideer GPT-suggesties en vul het blok. Muteert filled/skipped/used_uris/artist_counts."""
     for line in raw_suggestions:
         if "|" not in line:
@@ -200,6 +208,13 @@ def _process_suggestions(raw_suggestions, categorieen, filled, skipped,
                 f'"{artist} - {title}" (decade mismatch, verwacht {expected_decade})')
             continue
 
+        if verdeling:
+            ok, reden = verdeling.check(result.get("popularity"))
+            if not ok:
+                skipped.setdefault(matched_cat, []).append(f'"{artist} - {title}" ({reden})')
+                continue
+            verdeling.neem(result.get("popularity"))
+
         filled[matched_cat] = {"categorie": matched_cat, "artiest": artist,
                                "titel": title, "uri": uri}
         used_uris.add(uri)
@@ -210,11 +225,13 @@ def _process_suggestions(raw_suggestions, categorieen, filled, skipped,
             break
 
 
-def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_gekozen=None):
+def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_gekozen=None,
+                   populariteit=False):
     """Genereer één blok (1 track per categorie), gevalideerd op Spotify.
 
     al_gekozen: tracks die al voor dit wachtrij-blok gekozen zijn (niet herhalen, telt
     mee voor de artiest-limiet).
+    populariteit: elk nummer in een eigen populariteitsvak (POPULARITEIT_VAKKEN).
 
     1. GPT: N suggesties per categorie.
     2. Valideer: artiest-limiet, Spotify, historie, decennium.
@@ -243,10 +260,13 @@ def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_ge
 
     exclude = list(set(active_artists + history_artists[-50:]))
     filled, skipped, used_uris = {}, {}, set(history_uris)
+    verdeling = (Verdeling(parse_vakken(POPULARITEIT_VAKKEN), len(categorieen))
+                 if populariteit else None)
 
-    raw = ask_gpt_for_suggestions(categorieen, exclude, blocked_artists=blocked())
+    raw = ask_gpt_for_suggestions(categorieen, exclude, blocked_artists=blocked(),
+                                  verdeling=verdeling)
     _process_suggestions(raw, categorieen, filled, skipped, used_uris,
-                         artist_counts, max_per_artiest, sp)
+                         artist_counts, max_per_artiest, sp, verdeling)
 
     reasks = 0
     for _ in range(MAX_REASKS):
@@ -256,15 +276,19 @@ def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_ge
         reasks += 1
         logger.info("Re-ask voor missende categorieën",
                     extra={"poging": reasks, "missend": missing})
-        extra = _ask_gpt_replacements(missing, skipped, exclude, blocked_artists=blocked())
+        extra = _ask_gpt_replacements(missing, skipped, exclude, blocked_artists=blocked(),
+                                      verdeling=verdeling)
         if not extra:
             continue
         _process_suggestions(extra, categorieen, filled, skipped, used_uris,
-                             artist_counts, max_per_artiest, sp)
+                             artist_counts, max_per_artiest, sp, verdeling)
 
     total, filled_count = len(categorieen), len(filled)
     logger.info("Blok resultaat",
                 extra={"gevuld": filled_count, "totaal": total, "reasks": reasks,
+                       "populariteit": (None if not verdeling or verdeling.uit
+                                        else {f"{lo}-{hi}": n for (lo, hi), n
+                                              in verdeling.gebruik.items()}),
                        "skipped_per_categorie": {c: len(r) for c, r in skipped.items()}})
 
     threshold = max(1, int(total * BLOK_ACCEPT_RATIO))
@@ -281,7 +305,7 @@ def generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, al_ge
 
 
 def generate_blocks(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, aantal=1,
-                    on_progress=None):
+                    on_progress=None, populariteit=False):
     """Genereer `aantal` blokken achter elkaar voor de wachtrij (3 pogingen per blok).
 
     Returns de tracks van alle gelukte blokken, of None als geen enkel blok lukte.
@@ -293,7 +317,7 @@ def generate_blocks(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, aant
         block = None
         for _ in range(3):
             block = generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest,
-                                   al_gekozen=tracks)
+                                   al_gekozen=tracks, populariteit=populariteit)
             if block:
                 break
         if block:
@@ -304,7 +328,8 @@ def generate_blocks(sp, playlist_id, categorieen, wl_id, max_per_artiest=0, aant
 
 
 def initial_fill(playlist_id, categorieen, wl_id, max_per_artiest=0,
-                 aantal_blokken=10, blokken_per_rotatie=1, on_progress=None):
+                 aantal_blokken=10, blokken_per_rotatie=1, on_progress=None,
+                 populariteit=False):
     """Vul een playlist met N blokken plus de wachtrij (blokken_per_rotatie blokken)."""
     sp = get_spotify_client()
     block_size = len(categorieen)
@@ -325,11 +350,12 @@ def initial_fill(playlist_id, categorieen, wl_id, max_per_artiest=0,
 
         if is_wachtrij:
             block = generate_blocks(sp, playlist_id, categorieen, wl_id, max_per_artiest,
-                                    aantal=blokken_per_rotatie)
+                                    aantal=blokken_per_rotatie, populariteit=populariteit)
         else:
             block = None
             for _ in range(3):
-                block = generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest)
+                block = generate_block(sp, playlist_id, categorieen, wl_id, max_per_artiest,
+                                       populariteit=populariteit)
                 if block:
                     break
         if not block:
