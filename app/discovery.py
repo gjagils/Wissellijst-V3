@@ -268,6 +268,7 @@ def initial_fill_discovery(playlist_id, wl, on_progress=None):
     taste_profile = _taste_profile(wl, wl_id)
     aantal_blokken = wl.get("aantal_blokken", 5)
     block_size = wl.get("blok_grootte", 10)
+    per_rotatie = wl.get("blokken_per_rotatie", 1)
     totaal = aantal_blokken + 1
 
     if on_progress:
@@ -282,7 +283,8 @@ def initial_fill_discovery(playlist_id, wl, on_progress=None):
     if on_progress:
         on_progress(0, totaal, f"{len(candidates)} unieke tracks gevonden, scoring...")
     scores = _score_all(candidates, taste_profile, on_progress, totaal)
-    all_selected = rank_and_select(candidates, scores, count=totaal * block_size,
+    all_selected = rank_and_select(candidates, scores,
+                                   count=(aantal_blokken + per_rotatie) * block_size,
                                    max_per_artiest=wl.get("max_per_artiest", 0))
 
     added, mislukt = [], 0
@@ -292,7 +294,9 @@ def initial_fill_discovery(playlist_id, wl, on_progress=None):
             on_progress(blok_nr, totaal,
                         "Toevoegen volgend blokje..." if is_wachtrij
                         else f"Toevoegen blok {blok_nr}/{aantal_blokken}...")
-        block_tracks = all_selected[(blok_nr - 1) * block_size: blok_nr * block_size]
+        # Het laatste "blok" is de wachtrij: per_rotatie blokken in één keer.
+        eind = len(all_selected) if is_wachtrij else blok_nr * block_size
+        block_tracks = all_selected[(blok_nr - 1) * block_size: eind]
         if not block_tracks:
             mislukt += 1
             continue

@@ -51,6 +51,12 @@ def validate_wissellijst_config(data):
     if not isinstance(blok_grootte, int) or blok_grootte < 1:
         errors.append("blok_grootte moet een positief geheel getal zijn")
 
+    per_rotatie = data.get("blokken_per_rotatie", 1)
+    if not isinstance(per_rotatie, int) or per_rotatie < 1:
+        errors.append("blokken_per_rotatie moet een positief geheel getal zijn")
+    elif isinstance(aantal_blokken, int) and per_rotatie > aantal_blokken:
+        errors.append("blokken_per_rotatie mag niet groter zijn dan aantal_blokken")
+
     max_per_artiest = data.get("max_per_artiest", 0)
     if not isinstance(max_per_artiest, int) or max_per_artiest < 0:
         errors.append("max_per_artiest moet 0 of een positief geheel getal zijn")

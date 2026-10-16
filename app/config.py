@@ -55,7 +55,7 @@ def load_wissellijsten():
 
 
 _WL_VELDEN = ("naam", "playlist_id", "type", "categorieen", "bron_playlists",
-              "aantal_blokken", "blok_grootte", "max_per_artiest",
+              "aantal_blokken", "blok_grootte", "blokken_per_rotatie", "max_per_artiest",
               "rotatie_schema", "rotatie_tijdstip", "rotatie_dag",
               "mail_na_rotatie", "mail_adres", "smaakprofiel")
 
@@ -95,6 +95,7 @@ def save_wissellijst(wl_data):
                 bron_playlists=wl_data.get("bron_playlists", []),
                 aantal_blokken=wl_data.get("aantal_blokken", 10),
                 blok_grootte=wl_data.get("blok_grootte", 5),
+                blokken_per_rotatie=wl_data.get("blokken_per_rotatie", 1),
                 max_per_artiest=wl_data.get("max_per_artiest", 0),
                 rotatie_schema=wl_data.get("rotatie_schema", "uit"),
                 rotatie_tijdstip=wl_data.get("rotatie_tijdstip", "08:00"),

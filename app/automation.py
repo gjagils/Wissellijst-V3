@@ -51,6 +51,8 @@ def _count_expired_tracks(sp, playlist_id, max_days):
 def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
     """Verwijder de oudste nummers (zoveel als de wachtrij lang is) en voeg de wachtrij toe.
 
+    De wachtrij bevat blokken_per_rotatie blokken, dus zoveel blokken wisselen er.
+
     sort_by_age: sorteer op added_at (discovery); anders de playlist-volgorde.
     """
     queue_entries = get_wachtrij(wl_id)
@@ -66,8 +68,10 @@ def rotate_playlist(playlist_id, wl_id, sort_by_age=False):
     if sort_by_age:
         current_items = _get_all_playlist_items(sp, playlist_id)
         current_items.sort(key=lambda x: x.get("added_at", "9999"))
+    elif block_size <= 100:
+        current_items = sp.playlist_items(playlist_id, limit=block_size)["items"]
     else:
-        current_items = sp.playlist_items(playlist_id, limit=50)["items"]
+        current_items = _get_all_playlist_items(sp, playlist_id)
 
     tracks_to_remove, removed_tracks_detail, historie_entries = [], [], []
     for item in current_items[:block_size]:
@@ -128,8 +132,8 @@ def _check_queue_decades(sp, wl_id):
 
 
 def rotate_and_regenerate(wl):
-    """Roteer een wissellijst en zet een nieuw wachtrij-blok klaar."""
-    from suggest import generate_block
+    """Roteer een wissellijst en zet een nieuwe wachtrij (blokken_per_rotatie blokken) klaar."""
+    from suggest import generate_blocks
 
     wl_id = wl["id"]
     if wl.get("type") == "discovery":
@@ -139,12 +143,9 @@ def rotate_and_regenerate(wl):
     _check_queue_decades(sp, wl_id)
 
     def nieuw_blok():
-        for _ in range(3):
-            block = generate_block(sp, wl["playlist_id"], wl.get("categorieen", []),
-                                   wl_id, wl.get("max_per_artiest", 0))
-            if block:
-                return block
-        return None
+        return generate_blocks(sp, wl["playlist_id"], wl.get("categorieen", []), wl_id,
+                               wl.get("max_per_artiest", 0),
+                               aantal=wl.get("blokken_per_rotatie", 1))
 
     # Lege wachtrij: eerst een blok genereren, anders blijft de lijst hangen.
     if not get_wachtrij(wl_id):
@@ -175,7 +176,7 @@ def _rotate_discovery(wl, wl_id):
     from discovery import generate_discovery_block
 
     sp = get_spotify_client()
-    block_size = wl.get("blok_grootte", 10)
+    block_size = wl.get("blok_grootte", 10) * wl.get("blokken_per_rotatie", 1)
     expired_count = _count_expired_tracks(sp, wl["playlist_id"], DISCOVERY_EXPIRE_DAGEN)
     effective_size = max(block_size, expired_count)
     if expired_count > block_size:
