@@ -537,6 +537,16 @@ def api_rotaties(lijst_id):
         } for run in runs])
 
 
+@app.route("/rotaties/<int:run_id>/post")
+def rotatie_post(run_id):
+    """Instagram-post van een rotatie: wat eruit ging en wat erin kwam."""
+    from post import post_data
+    data = post_data(run_id)
+    if not data:
+        return "Rotatie niet gevonden", 404
+    return render_template("post.html", **data)
+
+
 @app.route("/api/scheduler/jobs")
 def api_scheduler_jobs():
     return jsonify(_wl_scheduler.get_jobs() if _wl_scheduler else [])

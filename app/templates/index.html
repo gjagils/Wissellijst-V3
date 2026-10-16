@@ -260,6 +260,7 @@
             <button class="tab-btn active" onclick="toonTab('acties')" id="tab-acties">Acties</button>
             <button class="tab-btn" onclick="toonTab('wachtrij')" id="tab-wachtrij">Wachtrij</button>
             <button class="tab-btn" onclick="toonTab('historie')" id="tab-historie">Historie</button>
+            <button class="tab-btn" onclick="toonTab('rotaties')" id="tab-rotaties">Rotaties</button>
             <button class="tab-btn hidden" onclick="toonTab('smaakprofiel')" id="tab-smaakprofiel">Smaakprofiel</button>
         </div>
 
@@ -303,6 +304,12 @@
             </div>
             <p class="historie-count" id="historie-count"></p>
             <div class="historie-lijst" id="historie-lijst"></div>
+        </div>
+
+        <div id="tab-content-rotaties" class="card hidden">
+            <h2>Rotaties</h2>
+            <p class="historie-count" id="rotaties-count"></p>
+            <div class="historie-lijst" id="rotaties-lijst"></div>
         </div>
 
         <div id="tab-content-smaakprofiel" class="card hidden">
@@ -568,10 +575,12 @@
             document.getElementById('tab-content-acties').classList.add('hidden');
             document.getElementById('tab-content-wachtrij').classList.add('hidden');
             document.getElementById('tab-content-historie').classList.add('hidden');
+            document.getElementById('tab-content-rotaties').classList.add('hidden');
             document.getElementById('tab-content-smaakprofiel').classList.add('hidden');
             document.getElementById('tab-content-' + tabNaam).classList.remove('hidden');
 
             if (tabNaam === 'historie') laadHistorie();
+            if (tabNaam === 'rotaties') laadRotaties();
             if (tabNaam === 'wachtrij') laadWachtrij();
             if (tabNaam === 'smaakprofiel') laadSmaakprofiel();
         }
@@ -1493,6 +1502,44 @@
             } catch (e) {
                 statusEl.textContent = 'Fout: ' + e.message;
                 btn.disabled = false;
+            }
+        }
+
+        // --- Rotaties (audit trail + Instagram-post) ---
+        async function laadRotaties() {
+            if (!activeLijstId) return;
+            const lijst = document.getElementById('rotaties-lijst');
+            const count = document.getElementById('rotaties-count');
+            const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/rotaties`);
+                const runs = await res.json();
+                if (!runs.length) {
+                    count.textContent = 'Nog geen rotaties.';
+                    lijst.innerHTML = '';
+                    return;
+                }
+                count.textContent = `Laatste ${runs.length} rotaties`;
+                lijst.innerHTML = runs.map(r => {
+                    const wanneer = r.started_at ? new Date(r.started_at + 'Z').toLocaleString('nl-NL', {dateStyle: 'medium', timeStyle: 'short'}) : '';
+                    const door = r.triggered_by === 'scheduler' ? 'automatisch' : 'handmatig';
+                    const status = r.status === 'voltooid'
+                        ? `${r.tracks_toegevoegd} erin, ${r.tracks_verwijderd} eruit`
+                        : esc(r.status + (r.error_message ? ': ' + r.error_message : ''));
+                    const post = r.status === 'voltooid' && r.wijzigingen.length
+                        ? `<a class="btn btn-secondary" style="font-size:0.8em; padding:4px 10px; text-decoration:none;" href="/rotaties/${r.id}/post" target="_blank">Instagram-post</a>`
+                        : '';
+                    return `
+                        <div class="historie-item">
+                            <div>
+                                <span class="historie-item-artiest">${esc(wanneer)}</span>
+                                <span class="historie-item-titel"> \u2014 ${status} (${door})</span>
+                            </div>
+                            <div class="item-actions">${post}</div>
+                        </div>`;
+                }).join('');
+            } catch (e) {
+                toonMelding('Kan rotaties niet laden: ' + e.message, 'fout');
             }
         }
 
