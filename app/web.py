@@ -367,6 +367,7 @@ def api_vullen():
                                   aantal_blokken=wl.get("aantal_blokken", 10),
                                   blokken_per_rotatie=wl.get("blokken_per_rotatie", 1),
                                   populariteit=wl.get("populariteit_verdeling", False),
+                                  radio=wl.get("radiolijsten", False),
                                   on_progress=on_progress)
         task["tekst"] = f"{result['toegevoegd']} nummers toegevoegd ({result['blokken']} blokken)"
         task["resultaat"] = result
@@ -481,7 +482,8 @@ def api_wachtrij_genereer(lijst_id):
             block = generate_blocks(sp, wl["playlist_id"], wl.get("categorieen", []), lijst_id,
                                     wl.get("max_per_artiest", 0), aantal=per_rotatie,
                                     on_progress=on_progress,
-                                    populariteit=wl.get("populariteit_verdeling", False))
+                                    populariteit=wl.get("populariteit_verdeling", False),
+                                    radio=wl.get("radiolijsten", False))
         if not block:
             raise RuntimeError("Kon geen blokje genereren")
         save_wachtrij(lijst_id, block)
@@ -547,6 +549,77 @@ def rotatie_post(run_id):
     if not data:
         return "Rotatie niet gevonden", 404
     return render_template("post.html", **data)
+
+
+# --- Radiolijsten (NL-populariteit) ---
+
+@app.route("/api/radiolijsten")
+def api_radiolijsten():
+    import radio
+    return jsonify(radio.lijsten())
+
+
+@app.route("/api/radiolijsten", methods=["POST"])
+def api_radiolijst_importeren():
+    """Importeer een radiolijst uit een Spotify-playlist (playlist) of geplakte tekst (tekst)."""
+    import re
+    import radio
+    body = request.get_json(silent=True) or {}
+    naam = (body.get("naam") or "").strip()
+    zender = (body.get("zender") or "").strip()
+    decennium = (body.get("decennium") or "").strip().lower()
+    if decennium and not re.fullmatch(r"\d0s", decennium):
+        return jsonify({"error": "Decennium moet leeg zijn of zoals '80s'"}), 400
+
+    playlist_id = ""
+    if (body.get("playlist") or "").strip():
+        playlist_id = radio.playlist_id_uit(body["playlist"])
+        if not playlist_id:
+            return jsonify({"error": "Geen geldige Spotify-playlist (URL of ID)"}), 400
+        try:
+            spotify_naam, entries = radio.lees_playlist(get_spotify_client(), playlist_id)
+        except Exception as e:
+            logger.error("Radiolijst lezen mislukt", extra={"playlist_id": playlist_id, "error": str(e)})
+            return jsonify({"error": f"Kon de playlist niet lezen bij Spotify: {e}. "
+                                     "Plak de lijst anders als tekst."}), 502
+        naam = naam or spotify_naam
+    else:
+        entries = radio.parse_tekst(body.get("tekst", ""))
+    if not naam:
+        return jsonify({"error": "Naam is verplicht"}), 400
+    if not entries:
+        return jsonify({"error": "Geen nummers gevonden in de lijst"}), 400
+
+    result = radio.sla_op(naam, zender, decennium, entries, spotify_playlist_id=playlist_id)
+    logger.info("Radiolijst geïmporteerd", extra={"naam": naam, "nummers": len(entries)})
+    return jsonify({**result, "tekst": f"{naam}: {len(entries)} nummers geïmporteerd."})
+
+
+@app.route("/api/radiolijsten/<int:lijst_id>/vernieuwen", methods=["POST"])
+def api_radiolijst_vernieuwen(lijst_id):
+    """Lees een radiolijst opnieuw uit zijn Spotify-playlist."""
+    import radio
+    rl = radio.get_lijst(lijst_id)
+    if not rl:
+        return jsonify({"error": "Radiolijst niet gevonden"}), 404
+    if not rl["spotify_playlist_id"]:
+        return jsonify({"error": "Deze lijst is als tekst geplakt; importeer hem opnieuw"}), 400
+    try:
+        _, entries = radio.lees_playlist(get_spotify_client(), rl["spotify_playlist_id"])
+    except Exception as e:
+        return jsonify({"error": f"Kon de playlist niet lezen bij Spotify: {e}"}), 502
+    if not entries:
+        return jsonify({"error": "Playlist is leeg"}), 400
+    result = radio.sla_op(rl["naam"], rl["zender"], rl["decennium"], entries, lijst_id=lijst_id)
+    return jsonify({**result, "tekst": f"{rl['naam']}: {len(entries)} nummers bijgewerkt."})
+
+
+@app.route("/api/radiolijsten/<int:lijst_id>", methods=["DELETE"])
+def api_radiolijst_verwijderen(lijst_id):
+    import radio
+    if not radio.verwijder(lijst_id):
+        return jsonify({"error": "Radiolijst niet gevonden"}), 404
+    return jsonify({"ok": True})
 
 
 @app.route("/api/scheduler/jobs")
