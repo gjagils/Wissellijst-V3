@@ -22,6 +22,9 @@ os.environ.update({
     "APP_PASSWORD": "geheim123",
     "SESSION_COOKIE_SECURE": "0",
     "ALERT_MAIL": "alarm@example.org",
+    # Geen echte beeld-aanroepen; tests die het nodig hebben zetten het zelf aan met een fake.
+    "INSTAGRAM_AI_ILLUSTRATIE": "0",
+    "INSTAGRAM_AI_AFWERKING": "0",
 })
 os.environ.pop("TZ", None)
 os.environ.pop("SCHEDULER_TZ", None)

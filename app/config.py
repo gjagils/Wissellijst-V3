@@ -22,6 +22,13 @@ OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")    # Instagr
 OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")      # low, medium of high
 # Instagram-plaatjes: achtergrondillustratie van het beeldmodel (0 = zelf getekende achtergrond)
 INSTAGRAM_AI_ILLUSTRATIE = os.getenv("INSTAGRAM_AI_ILLUSTRATIE", "1") == "1"
+# AI-afwerking: het strakke plaatje opnieuw laten tekenen in handgetekende posterstijl.
+# Een tweede model leest de tekst terug; klopt die niet, dan blijft het strakke plaatje.
+INSTAGRAM_AI_AFWERKING = os.getenv("INSTAGRAM_AI_AFWERKING", "1") == "1"
+INSTAGRAM_AFWERKING_QUALITY = os.getenv("INSTAGRAM_AFWERKING_QUALITY", "high")  # low, medium, high
+INSTAGRAM_AFWERKING_POGINGEN = int(os.getenv("INSTAGRAM_AFWERKING_POGINGEN", "2"))
+OPENAI_IMAGE_INPUT_FIDELITY = os.getenv("OPENAI_IMAGE_INPUT_FIDELITY", "high")  # leeg = niet meesturen
+OPENAI_CONTROLE_MODEL = os.getenv("OPENAI_CONTROLE_MODEL", "gpt-4o")  # leest de tekst terug
 
 # --- Gedrag van de generatie ---
 SUGGESTIES_PER_CATEGORIE = int(os.getenv("SUGGESTIES_PER_CATEGORIE", "5"))

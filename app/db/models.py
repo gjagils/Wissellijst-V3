@@ -235,4 +235,6 @@ class RotatieAfbeelding(Base):
     png = Column(LargeBinary, nullable=False)
     caption = Column(Text, default="")
     alt_tekst = Column(Text, default="")
+    variant = Column(String(10), default="strak")  # strak of ai (AI-afwerking)
+    opmerking = Column(Text, default="")  # bijv. waarom de AI-afwerking is afgekeurd
     created_at = Column(DateTime, default=utcnow)
