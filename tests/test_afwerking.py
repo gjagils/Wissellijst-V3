@@ -139,3 +139,17 @@ def test_maak_voor_run_bewaart_beide_varianten(client, wissellijst, monkeypatch)
     html = client.get(f"/rotaties/{run_id}/post").get_data(as_text=True)
     assert "AI-afwerking" in html and "AI-afwerking afgekeurd: sticker" in html
     assert html.index("AI-afwerking</span>") < html.index("Strak</span>")
+
+
+def test_leestekens_tellen_niet_mee():
+    """Het beeldmodel schrijft 80'S met een rechte apostrof en zet een streepje voor het jaar."""
+    asset = _asset()
+    gelezen = _goed_gelezen(asset)
+    for t, verwacht in zip(gelezen["tracks"], asset["tracks"]):
+        t["decennium"] = verwacht["decade"][:2] + "'S"
+        t["artiest_regel"] = f"{verwacht['artist']} - {verwacht['year']}"
+    gelezen["rotatie"] = "Rotatie # 27"
+    assert ig.vergelijk_tekst(asset, gelezen) == []
+    # spelling telt wel
+    gelezen["tracks"][4]["artiest_regel"] = "Tegan d Sara - 2012"
+    assert len(ig.vergelijk_tekst(asset, gelezen)) == 1
