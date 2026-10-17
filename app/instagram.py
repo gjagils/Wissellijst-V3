@@ -21,7 +21,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from config import (OPENAI_API_KEY, OPENAI_IMAGE_MODEL, OPENAI_IMAGE_QUALITY,
                     INSTAGRAM_AI_ILLUSTRATIE, INSTAGRAM_AI_AFWERKING, INSTAGRAM_AFWERKING_QUALITY,
-                    INSTAGRAM_AFWERKING_POGINGEN, OPENAI_IMAGE_INPUT_FIDELITY, OPENAI_CONTROLE_MODEL)
+                    INSTAGRAM_AFWERKING_POGINGEN, OPENAI_IMAGE_INPUT_FIDELITY, OPENAI_CONTROLE_MODEL,
+                    INSTAGRAM_RICHTINGEN)
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -369,7 +370,12 @@ def controleer_tekst(asset, png):
         messages=[{"role": "user", "content": [
             {"type": "text", "text": CONTROLE_PROMPT},
             {"type": "image_url", "image_url": {"url": data_url}}]}])
-    gelezen = json.loads(antwoord.choices[0].message.content)
+    bericht = antwoord.choices[0].message
+    if not bericht.content:
+        # Het model weigerde of gaf niets terug: dan kunnen we de tekst niet controleren.
+        raise ValueError("tekstcontrole gaf geen antwoord"
+                         + (f": {bericht.refusal}" if getattr(bericht, "refusal", None) else ""))
+    gelezen = json.loads(bericht.content)
     return vergelijk_tekst(asset, gelezen)
 
 
@@ -666,6 +672,8 @@ def maak_voor_run(run_id):
 
     plaatjes, redenen = [], []
     for richting, soort in (("IN", "toegevoegd"), ("OUT", "verwijderd")):
+        if richting not in INSTAGRAM_RICHTINGEN:
+            continue
         tracks = [w for w in wijzigingen if w["type"] == soort]
         groepen = groepeer(tracks)
         if not groepen:

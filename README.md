@@ -61,6 +61,7 @@ Tests: `pytest -q` (geen externe diensten nodig).
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | nee | mail na rotatie en alarm |
 | `TZ` / `SCHEDULER_TZ` | nee | tijdzone van de rotatie-tijden (default Europe/Amsterdam) |
 | `OPENAI_MODEL`, `OPENAI_SCORE_MODEL` | nee | gpt-4o / gpt-4o-mini |
+| `INSTAGRAM_RICHTINGEN` | nee | welke Instagram-plaatjes per rotatie: `IN` (standaard), `OUT` of `IN,OUT` |
 | `INSTAGRAM_AI_AFWERKING`, `INSTAGRAM_AFWERKING_QUALITY`, `INSTAGRAM_AFWERKING_POGINGEN`, `OPENAI_IMAGE_INPUT_FIDELITY`, `OPENAI_CONTROLE_MODEL` | nee | AI-afwerking van de plaatjes met tekstcontrole: 1 / high / 2 / high / gpt-4o (0 = alleen het strakke plaatje) |
 | `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_QUALITY`, `INSTAGRAM_AI_ILLUSTRATIE` | nee | Instagram-plaatjes: gpt-image-1 / medium / 1 (0 = zelf getekende achtergrond, geen beeldkosten) |
 | `SUGGESTIES_PER_CATEGORIE`, `MAX_REASKS`, `BLOK_ACCEPT_RATIO`, `DISCOVERY_MAX_MAANDEN`, `DISCOVERY_EXPIRE_DAGEN`, `POPULARITEIT_VAKKEN`, `RADIO_SCORE_MIN`, `RADIO_KANDIDATEN_PER_CATEGORIE` | nee | gedrag van de generatie, zie `.env.example` |
