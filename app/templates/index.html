@@ -1314,7 +1314,7 @@
         }
 
         async function herstartenLijst(id) {
-            if (!confirm('Weet je het zeker? Dit maakt de playlist leeg en wist alle historie en wachtrij.')) return;
+            if (!confirm('Weet je het zeker? Dit maakt de playlist leeg, wist alle historie en wachtrij en zet de rotatieteller op 0.')) return;
             try {
                 const res = await fetch(`/api/wissellijsten/${id}/herstarten`, { method: 'POST' });
                 if (res.status === 401) {
@@ -1699,7 +1699,7 @@
                     return `
                         <div class="historie-item" style="align-items:flex-start;">
                             <div>
-                                <span class="historie-item-artiest">${esc(wanneer)}</span>
+                                <span class="historie-item-artiest">${r.rotatienummer ? `#${r.rotatienummer} \u00b7 ` : ''}${esc(wanneer)}</span>
                                 <span class="historie-item-titel"> \u2014 ${status} (${door})</span>
                                 ${details}
                             </div>

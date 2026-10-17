@@ -149,6 +149,28 @@ def delete_wissellijst(lijst_id):
             session.delete(wl)
 
 
+def rotatienummer(session, run):
+    """Volgnummer van een geslaagde rotatie binnen de lijst, vanaf de laatste herstart.
+    Initieel vullen is geen rotatie en telt dus niet mee."""
+    from db.models import RotatieRun, Wissellijst
+    wl = session.get(Wissellijst, run.wissellijst_id)
+    vanaf = (wl.rotatie_teller_vanaf or 0) if wl else 0
+    return (session.query(RotatieRun)
+            .filter(RotatieRun.wissellijst_id == run.wissellijst_id, RotatieRun.status == "voltooid",
+                    RotatieRun.id > vanaf, RotatieRun.id <= run.id).count())
+
+
+def reset_rotatieteller(lijst_id):
+    """Laat de rotatieteller opnieuw beginnen (bij herstarten); de audit trail blijft staan."""
+    from sqlalchemy import func
+    from db.models import RotatieRun, Wissellijst
+    with _session() as session:
+        wl = session.get(Wissellijst, lijst_id)
+        if wl:
+            wl.rotatie_teller_vanaf = (session.query(func.max(RotatieRun.id))
+                                       .filter_by(wissellijst_id=lijst_id).scalar() or 0)
+
+
 def set_laatste_rotatie(lijst_id):
     from db.models import Wissellijst, utcnow
     with _session() as session:

@@ -633,10 +633,8 @@ def render(asset, achtergrond=None, hoezen=None):
 # --- Per rotatie: data ophalen, renderen, opslaan ---
 
 def _rotatienummer(session, run):
-    from db.models import RotatieRun
-    return (session.query(RotatieRun)
-            .filter(RotatieRun.wissellijst_id == run.wissellijst_id, RotatieRun.status == "voltooid",
-                    RotatieRun.id <= run.id).count())
+    from config import rotatienummer
+    return rotatienummer(session, run)
 
 
 def _hoes_urls(uris):

@@ -342,8 +342,11 @@ def api_wissellijst_herstarten(lijst_id):
 
     clear_historie(lijst_id)
     clear_wachtrij(lijst_id)
+    from config import reset_rotatieteller
+    reset_rotatieteller(lijst_id)
     return jsonify({"ok": True, "verwijderd": len(uris),
-                    "tekst": f"Playlist leeggemaakt ({len(uris)} tracks), historie en wachtrij gewist."})
+                    "tekst": f"Playlist leeggemaakt ({len(uris)} tracks), historie en wachtrij gewist, "
+                             "rotatieteller op 0."})
 
 
 @app.route("/api/vullen", methods=["POST"])
@@ -525,6 +528,7 @@ def api_rotaties(lijst_id):
     from db.session import get_session
     from db.models import RotatieRun, RotatieWijziging
 
+    from config import rotatienummer
     with get_session() as s:
         runs = (s.query(RotatieRun).filter_by(wissellijst_id=lijst_id)
                 .order_by(RotatieRun.started_at.desc()).limit(50).all())
@@ -537,6 +541,8 @@ def api_rotaties(lijst_id):
             "tracks_verwijderd": run.tracks_verwijderd,
             "tracks_toegevoegd": run.tracks_toegevoegd,
             "error_message": run.error_message,
+            # None voor mislukte runs en voor runs van vóór de laatste herstart
+            "rotatienummer": (rotatienummer(s, run) or None) if run.status == "voltooid" else None,
             "wijzigingen": [{"type": w.type, "artiest": w.artiest, "titel": w.titel,
                              "jaar": w.jaar, "categorie": w.categorie}
                             for w in s.query(RotatieWijziging).filter_by(run_id=run.id).all()],
