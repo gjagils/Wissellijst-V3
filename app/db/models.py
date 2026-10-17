@@ -31,6 +31,8 @@ class Wissellijst(Base):
     populariteit_verdeling = Column(Boolean, default=False)
     radiolijsten = Column(Boolean, default=False)  # NL-radiolijsten voor kandidaten en populariteit
     instagram_plaatjes = Column(Boolean, default=False)  # na elke rotatie IN/OUT-plaatjes maken
+    # Rotatienummer telt rotaties met een run-id hoger dan dit (gezet bij herstarten)
+    rotatie_teller_vanaf = Column(Integer, default=0)
     max_per_artiest = Column(Integer, default=0)
 
     # Rotatie schema
