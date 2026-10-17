@@ -192,9 +192,9 @@ def test_lange_titel_krijgt_twee_regels():
     from PIL import ImageDraw
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     font = ig._bold_font(27)
-    regels = ig._regels(draw, "Love Will Tear Us Apart", font, 324, max_regels=2)
+    regels = ig._regels(draw, "Love Will Tear Us Apart", font, 258, max_regels=2)
     assert len(regels) == 2 and " ".join(regels) == "Love Will Tear Us Apart"
-    lang = ig._regels(draw, "Een Hele Lange Titel Die Zelfs Op Twee Regels Niet Helemaal Past", font, 324)
+    lang = ig._regels(draw, "Een Hele Lange Titel Die Zelfs Op Twee Regels Niet Helemaal Past", font, 258)
     assert len(lang) == 2 and lang[1].endswith("…")
     tracks = _tracks()
     tracks[0]["title"] = "Love Will Tear Us Apart"
