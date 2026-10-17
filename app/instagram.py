@@ -572,6 +572,7 @@ def render(asset, achtergrond=None, hoezen=None):
     # Vijf trackregels, altijd 80s -> 20s
     x0, x1, y, hoogte, tussen = 66, 560, 238, 116, 16
     badge_f, titel_f, artiest_f = _logo_font(34), _bold_font(31), _medium_font(25)
+    titel2_f, artiest2_f = _bold_font(27), _medium_font(23)
     h_y = y
     for t in asset["tracks"]:
         is_h = t["highlighted"]
@@ -590,9 +591,22 @@ def render(asset, achtergrond=None, hoezen=None):
         draw.rounded_rectangle((x0 + 126, yc + 20, x0 + 202, yc + 96), 10, outline=ink, width=3)
         tx = x0 + 218
         rechts = x1 - 18
-        draw.text((tx, yc + 40), _past(draw, t["title"], titel_f, rechts - tx), font=titel_f, fill=ink, anchor="lm")
-        draw.text((tx, yc + 78), _past(draw, artiest_regel(t), artiest_f, rechts - tx), font=artiest_f,
-                  fill="#3A3F45", anchor="lm")
+        if draw.textlength(t["title"], font=titel_f) <= rechts - tx:
+            draw.text((tx, yc + 40), t["title"], font=titel_f, fill=ink, anchor="lm")
+            draw.text((tx, yc + 78), _past(draw, artiest_regel(t), artiest_f, rechts - tx), font=artiest_f,
+                      fill="#3A3F45", anchor="lm")
+        else:
+            # Lange titel: twee regels in een iets kleinere letter, artiest eronder
+            regels = _regels(draw, t["title"], titel2_f, rechts - tx, max_regels=2)
+            if len(regels) == 1:  # past in de kleinere letter op één regel: zelfde plek als normaal
+                draw.text((tx, yc + 40), regels[0], font=titel2_f, fill=ink, anchor="lm")
+                artiest_y = yc + 78
+            else:
+                for i, regel in enumerate(regels):
+                    draw.text((tx, yc + 26 + 29 * i), regel, font=titel2_f, fill=ink, anchor="lm")
+                artiest_y = yc + 90
+            draw.text((tx, artiest_y), _past(draw, artiest_regel(t), artiest2_f, rechts - tx),
+                      font=artiest2_f, fill="#3A3F45", anchor="lm")
         y += hoogte + extra + tussen
 
     # Sticker op de rand van de uitgelichte kaart: NU OP / HELAAS VAN DE WISSELLIJST
