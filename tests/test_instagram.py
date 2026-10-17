@@ -185,3 +185,18 @@ def test_standaard_alleen_in(wissellijst, monkeypatch):
     run_id = _run_met_wijzigingen(wissellijst["id"])
     assert ig.maak_voor_run(run_id) == 1
     assert [p["richting"] for p in ig.plaatjes_voor_run(run_id)] == ["in"]
+
+
+def test_lange_titel_krijgt_twee_regels():
+    """Lange titels worden over twee regels verdeeld in plaats van afgekapt."""
+    from PIL import ImageDraw
+    draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    font = ig._bold_font(27)
+    regels = ig._regels(draw, "Love Will Tear Us Apart", font, 258, max_regels=2)
+    assert len(regels) == 2 and " ".join(regels) == "Love Will Tear Us Apart"
+    lang = ig._regels(draw, "Een Hele Lange Titel Die Zelfs Op Twee Regels Niet Helemaal Past", font, 258)
+    assert len(lang) == 2 and lang[1].endswith("…")
+    tracks = _tracks()
+    tracks[0]["title"] = "Love Will Tear Us Apart"
+    png = ig.render(ig.maak_asset(tracks, 12, DATUM, "IN"), None)
+    assert Image.open(io.BytesIO(png)).size == (1080, 1080)
