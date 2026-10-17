@@ -13,6 +13,7 @@ import math
 import os
 import random
 import re
+import unicodedata
 import urllib.request
 from zoneinfo import ZoneInfo
 
@@ -347,9 +348,15 @@ CONTROLE_PROMPT = (
 )
 
 
+def _vergelijk_vorm(tekst):
+    """Alleen letters en cijfers, zonder accenten en hoofdletters: leestekens en scheidingstekens
+    (’ of ', · of -) en spaties tellen niet mee, spelling wel."""
+    tekst = unicodedata.normalize("NFKD", str(tekst or "")).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]", "", tekst)
+
+
 def _gelijk(a, b):
-    from radio import _norm
-    return _norm(a) == _norm(b)
+    return _vergelijk_vorm(a) == _vergelijk_vorm(b)
 
 
 def controleer_tekst(asset, png):
