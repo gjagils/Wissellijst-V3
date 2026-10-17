@@ -84,9 +84,13 @@
         <h2>Instagram-plaatjes (Wissellijst-stijl)</h2>
         {% for p in plaatjes %}
         <div class="plaatje">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span style="background:{{ '#F6C945' if p.variant == 'ai' else '#333' }}; color:{{ '#17202A' if p.variant == 'ai' else '#e0e0e0' }}; border-radius:4px; padding:2px 8px; font-size:0.8em; font-weight:700;">{{ 'AI-afwerking' if p.variant == 'ai' else 'Strak' }}</span>
+                {% if p.opmerking and p.variant == 'strak' %}<span style="color:#888; font-size:0.8em;">{{ p.opmerking }}</span>{% endif %}
+            </div>
             <img src="/rotaties/{{ run_id }}/plaatje/{{ p.id }}.png" alt="{{ p.alt }}">
             <div class="knoppen" style="justify-content:flex-start;">
-                <a class="btn" style="text-decoration:none;" href="/rotaties/{{ run_id }}/plaatje/{{ p.id }}.png?download=1">Download {{ '5 IN' if p.richting == 'in' else '5 OUT' }}{% if p.deel > 1 %} (blok {{ p.deel }}){% endif %}</a>
+                <a class="btn" style="text-decoration:none;" href="/rotaties/{{ run_id }}/plaatje/{{ p.id }}.png?download=1">Download {{ '5 IN' if p.richting == 'in' else '5 OUT' }}{% if p.deel > 1 %} (blok {{ p.deel }}){% endif %}{% if p.variant == 'ai' %} (AI){% endif %}</a>
                 <button class="btn btn-secondary" onclick="kopieer('caption-{{ p.id }}')">Kopieer bijschrift</button>
                 <button class="btn btn-secondary" onclick="kopieer('alt-{{ p.id }}')">Kopieer alt-tekst</button>
             </div>
@@ -198,7 +202,7 @@
         async function maakPlaatjes() {
             const btn = document.getElementById('btn-plaatjes');
             btn.disabled = true;
-            melding('Plaatjes maken... (met AI-illustratie kan dit een minuut duren)');
+            melding('Plaatjes maken... (met AI-afwerking en controle kan dit enkele minuten duren)');
             try {
                 const { task_id } = await (await fetch('/api/rotaties/{{ run_id }}/plaatjes', { method: 'POST' })).json();
                 for (;;) {

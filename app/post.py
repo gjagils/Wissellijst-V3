@@ -68,9 +68,11 @@ def post_data(run_id):
         naam = wl.naam if wl else "Wissellijst"
         datum = _datum(run.completed_at or run.started_at)
         plaatjes = [{"id": a.id, "richting": a.richting, "deel": a.deel,
-                     "bestandsnaam": a.bestandsnaam, "caption": a.caption, "alt": a.alt_tekst}
-                    for a in s.query(RotatieAfbeelding).filter_by(run_id=run_id)
-                    .order_by(RotatieAfbeelding.deel, RotatieAfbeelding.richting).all()]
+                     "bestandsnaam": a.bestandsnaam, "caption": a.caption, "alt": a.alt_tekst,
+                     "variant": a.variant or "strak", "opmerking": a.opmerking or ""}
+                    for a in s.query(RotatieAfbeelding).filter_by(run_id=run_id).all()]
+        # Per richting en blok: eerst de AI-afwerking, dan de strakke versie
+        plaatjes.sort(key=lambda p: (p["deel"], p["richting"], p["variant"] != "ai"))
 
     hoezen = _hoezen([t["uri"] for t in tracks])
     for t in tracks:

@@ -19,7 +19,8 @@ from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from config import (OPENAI_API_KEY, OPENAI_IMAGE_MODEL, OPENAI_IMAGE_QUALITY,
-                    INSTAGRAM_AI_ILLUSTRATIE)
+                    INSTAGRAM_AI_ILLUSTRATIE, INSTAGRAM_AI_AFWERKING, INSTAGRAM_AFWERKING_QUALITY,
+                    INSTAGRAM_AFWERKING_POGINGEN, OPENAI_IMAGE_INPUT_FIDELITY, OPENAI_CONTROLE_MODEL)
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -232,6 +233,7 @@ def ai_achtergrond(asset):
             model=OPENAI_IMAGE_MODEL, prompt=ai_prompt(asset), size="1024x1024",
             quality=OPENAI_IMAGE_QUALITY, n=1)
         data = base64.b64decode(resultaat.data[0].b64_json)
+        logger.info("AI-illustratie gemaakt", extra={"model": OPENAI_IMAGE_MODEL})
         return Image.open(io.BytesIO(data)).convert("RGB")
     except Exception as e:
         logger.warning("AI-illustratie mislukt, getekende achtergrond gebruikt",
@@ -284,6 +286,137 @@ def getekende_achtergrond(asset):
     # Papierkorrel
     korrel = Image.effect_noise(img.size, 28).convert("RGB")
     return Image.blend(img, korrel, 0.06)
+
+
+# --- AI-afwerking met tekstcontrole ---
+
+def zichtbare_teksten(asset):
+    """Alle tekst die op het plaatje hoort, in leesvolgorde."""
+    teksten = ["WISSELLIJST", "DOOR DE TIJD HEEN", f"ROTATIE #{asset['rotation_number']}",
+               datum_label(asset["changed_at"]), sticker_tekst(asset)]
+    for t in asset["tracks"]:
+        teksten += [label(t["decade"]).upper(), t["title"], artiest_regel(t)]
+    teksten.append("5 IN" if asset["direction"] == "IN" else "5 OUT")
+    return teksten
+
+
+def afwerking_prompt(asset):
+    h = uitgelicht(asset)
+    teksten = "\n".join(f"- {t}" for t in zichtbare_teksten(asset))
+    sfeer = "fresh, upbeat, moving inward" if asset["direction"] == "IN" else "warm, nostalgic, moving outward"
+    return (
+        "Redraw this Instagram poster as a hand-drawn retro comic pop-art music poster: bold dark "
+        "outlines, hand-lettered display type, screen-print texture, halftone dots, paper grain, "
+        "torn-paper and brush-stroke details, radial sunburst, music notes, sparks and arrows, "
+        "yellow/turquoise/orange palette, wooden picture frame.\n\n"
+        "Keep the exact same layout and composition: logo top left, rotation tag top right, five "
+        "track cards on the left in the same order with the same colored decade badges and album "
+        "covers, the sticker on the highlighted card, and the banner along the bottom.\n"
+        f"Replace the circle on the right with a large illustrated {DEVICE_PROMPT[asset['device']]} "
+        f"as the hero object, decade accent color {DECADE_KLEUR_NAAM[asset['highlight_decade']]}, "
+        f"mood {sfeer}, inspired by \"{h['title']}\" by {h['artist']}.\n\n"
+        "Keep ALL text exactly as it is, letter for letter, in the same place. The text is:\n"
+        f"{teksten}\n"
+        "Do not add, remove, translate, abbreviate or reorder any text. Do not add any other words, "
+        "brand names or logos. No photorealism, no glossy 3D."
+    )
+
+
+def ai_afwerking(asset, strak_png):
+    """Het strakke plaatje opnieuw getekend door het beeldmodel; PNG-bytes of None."""
+    from openai import OpenAI
+    extra = {"quality": INSTAGRAM_AFWERKING_QUALITY}
+    if OPENAI_IMAGE_INPUT_FIDELITY:
+        extra["input_fidelity"] = OPENAI_IMAGE_INPUT_FIDELITY
+    resultaat = OpenAI(api_key=OPENAI_API_KEY, timeout=300).images.edit(
+        model=OPENAI_IMAGE_MODEL, image=("poster.png", strak_png, "image/png"),
+        prompt=afwerking_prompt(asset), size="1024x1024", extra_body=extra)
+    img = Image.open(io.BytesIO(base64.b64decode(resultaat.data[0].b64_json))).convert("RGB")
+    uit = io.BytesIO()
+    img.resize((FORMAAT, FORMAAT), Image.LANCZOS).save(uit, "PNG", optimize=True)
+    return uit.getvalue()
+
+
+CONTROLE_PROMPT = (
+    "Lees alle tekst op deze poster en geef alleen JSON terug:\n"
+    '{"tracks": [{"decennium": "80\'S", "titel": "...", "artiest_regel": "..."}], '
+    '"rotatie": "...", "datum": "...", "sticker": "...", "banner": "...", "overige_tekst": ["..."]}\n'
+    "tracks: de trackkaarten van boven naar beneden, precies zoals gespeld (artiest_regel is de "
+    "kleinere regel onder de titel, met het jaartal). sticker: het schuine label. banner: de grote "
+    "tekst onderaan. overige_tekst: alle andere tekst die je ziet. Verbeter geen spelfouten."
+)
+
+
+def _gelijk(a, b):
+    from radio import _norm
+    return _norm(a) == _norm(b)
+
+
+def controleer_tekst(asset, png):
+    """Laat een vision-model de tekst teruglezen. Returns een lijst verschillen (leeg = goed)."""
+    import json
+    from openai import OpenAI
+    data_url = "data:image/png;base64," + base64.b64encode(png).decode()
+    antwoord = OpenAI(api_key=OPENAI_API_KEY, timeout=120).chat.completions.create(
+        model=OPENAI_CONTROLE_MODEL, response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": CONTROLE_PROMPT},
+            {"type": "image_url", "image_url": {"url": data_url}}]}])
+    gelezen = json.loads(antwoord.choices[0].message.content)
+    return vergelijk_tekst(asset, gelezen)
+
+
+def vergelijk_tekst(asset, gelezen):
+    verschillen = []
+    tracks = gelezen.get("tracks") or []
+    if len(tracks) != len(asset["tracks"]):
+        verschillen.append(f"{len(tracks)} trackkaarten gelezen in plaats van {len(asset['tracks'])}")
+    for verwacht, t in zip(asset["tracks"], tracks):
+        if not _gelijk(t.get("decennium", ""), label(verwacht["decade"])):
+            verschillen.append(f"decennium {t.get('decennium')!r} op de plek van {label(verwacht['decade'])}")
+        if not _gelijk(t.get("titel", ""), verwacht["title"]):
+            verschillen.append(f"titel {t.get('titel')!r} in plaats van {verwacht['title']!r}")
+        if not _gelijk(t.get("artiest_regel", ""), artiest_regel(verwacht)):
+            verschillen.append(f"artiest {t.get('artiest_regel')!r} in plaats van {artiest_regel(verwacht)!r}")
+    if not _gelijk(gelezen.get("rotatie", ""), f"ROTATIE #{asset['rotation_number']}"):
+        verschillen.append(f"rotatie {gelezen.get('rotatie')!r}")
+    if not _gelijk(gelezen.get("datum", ""), datum_label(asset["changed_at"])):
+        verschillen.append(f"datum {gelezen.get('datum')!r}")
+    if not _gelijk(gelezen.get("sticker", ""), sticker_tekst(asset)):
+        verschillen.append(f"sticker {gelezen.get('sticker')!r}")
+    banner = "5 IN" if asset["direction"] == "IN" else "5 OUT"
+    if not _gelijk(gelezen.get("banner", ""), banner):
+        verschillen.append(f"banner {gelezen.get('banner')!r} in plaats van {banner!r}")
+    toegestaan = {"wissellijst", "door de tijd heen"}
+    extra = [x for x in gelezen.get("overige_tekst") or []
+             if x and not any(_gelijk(x, t) for t in toegestaan)]
+    if extra:
+        verschillen.append(f"extra tekst: {', '.join(map(str, extra[:5]))}")
+    return verschillen
+
+
+def afgewerkt_plaatje(asset, strak_png):
+    """Probeer de AI-afwerking (met controle). Returns (png of None, opmerking)."""
+    if not INSTAGRAM_AI_AFWERKING or not OPENAI_API_KEY:
+        return None, "AI-afwerking staat uit"
+    opmerking = ""
+    for poging in range(1, INSTAGRAM_AFWERKING_POGINGEN + 1):
+        try:
+            png = ai_afwerking(asset, strak_png)
+            verschillen = controleer_tekst(asset, png)
+        except Exception as e:
+            logger.warning("AI-afwerking mislukt", extra={"poging": poging, "error": str(e)})
+            opmerking = f"AI-afwerking mislukt: {e}"
+            continue
+        if not verschillen:
+            logger.info("AI-afwerking goedgekeurd", extra={"poging": poging,
+                                                          "richting": asset["direction"]})
+            return png, f"AI-afwerking goedgekeurd (poging {poging})"
+        logger.warning("AI-afwerking afgekeurd door tekstcontrole",
+                       extra={"poging": poging, "richting": asset["direction"],
+                              "verschillen": verschillen})
+        opmerking = "AI-afwerking afgekeurd: " + "; ".join(verschillen[:4])
+    return None, opmerking
 
 
 # --- Tekst en vormen ---
@@ -544,11 +677,16 @@ def maak_voor_run(run_id):
                                extra={"run_id": run_id, "richting": richting, "deel": deel,
                                       "fouten": fouten})
                 continue
-            png = render(asset, ai_achtergrond(asset))
-            plaatjes.append(RotatieAfbeelding(
-                run_id=run_id, richting=richting.lower(), deel=deel,
-                bestandsnaam=bestandsnaam(asset, deel), png=png,
-                caption=caption(asset), alt_tekst=alt_tekst(asset)))
+            strak = render(asset, ai_achtergrond(asset))
+            ai_png, opmerking = afgewerkt_plaatje(asset, strak)
+            naam_png = bestandsnaam(asset, deel)
+            gemeen = dict(run_id=run_id, richting=richting.lower(), deel=deel,
+                          caption=caption(asset), alt_tekst=alt_tekst(asset), opmerking=opmerking)
+            if ai_png:
+                # De AI-versie krijgt de bestandsnaam uit de stijlgids; de strakke blijft ter vergelijking.
+                plaatjes.append(RotatieAfbeelding(variant="ai", bestandsnaam=naam_png, png=ai_png, **gemeen))
+                naam_png = naam_png.replace("-square.png", "-square-strak.png")
+            plaatjes.append(RotatieAfbeelding(variant="strak", bestandsnaam=naam_png, png=strak, **gemeen))
 
     if not plaatjes:
         raise ValueError("Geen plaatje gemaakt. " + "; ".join(redenen))
@@ -556,16 +694,23 @@ def maak_voor_run(run_id):
         s.query(RotatieAfbeelding).filter_by(run_id=run_id).delete()
         for p in plaatjes:
             s.add(p)
-    logger.info("Instagram-plaatjes gemaakt", extra={"run_id": run_id, "aantal": len(plaatjes)})
-    return len(plaatjes)
+    sets = len({(p.richting, p.deel) for p in plaatjes})
+    logger.info("Instagram-plaatjes gemaakt",
+                extra={"run_id": run_id, "aantal": sets,
+                       "ai_afwerking": sum(1 for p in plaatjes if p.variant == "ai")})
+    return sets
 
 
 def plaatjes_voor_run(run_id):
-    """De opgeslagen plaatjes van een rotatie, voor de mail."""
+    """Het beste plaatje per richting en blok (AI-afwerking als die is goedgekeurd), voor de mail."""
     from db.session import get_session
     from db.models import RotatieAfbeelding
+    beste = {}
     with get_session() as s:
-        return [{"bestandsnaam": a.bestandsnaam, "png": a.png, "caption": a.caption,
-                 "alt": a.alt_tekst, "richting": a.richting}
-                for a in s.query(RotatieAfbeelding).filter_by(run_id=run_id)
-                .order_by(RotatieAfbeelding.deel, RotatieAfbeelding.richting).all()]
+        for a in (s.query(RotatieAfbeelding).filter_by(run_id=run_id)
+                  .order_by(RotatieAfbeelding.deel, RotatieAfbeelding.richting).all()):
+            sleutel = (a.deel, a.richting)
+            if sleutel not in beste or a.variant == "ai":
+                beste[sleutel] = {"bestandsnaam": a.bestandsnaam, "png": a.png, "caption": a.caption,
+                                  "alt": a.alt_tekst, "richting": a.richting, "variant": a.variant}
+    return [beste[k] for k in sorted(beste)]
