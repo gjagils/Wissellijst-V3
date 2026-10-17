@@ -36,6 +36,11 @@ def test_asset_volgorde_highlight_en_device():
     assert "📼 80’s — Take On Me · a-ha (1985)" in ig.caption(a_in)
     assert ig.artiest_regel(a_in["tracks"][0]) == "a-ha · 1985"
     assert "Uitgelicht is Back to Black van Amy Winehouse" in ig.alt_tekst(a_in)
+    # Eruit: geen "nu op", maar "helaas van"
+    assert ig.sticker_tekst(a_in) == "NU OP DE WISSELLIJST"
+    assert ig.sticker_tekst(a_out) == "HELAAS VAN DE WISSELLIJST"
+    assert "💔 Helaas van de Wissellijst:" in ig.caption(a_out)
+    assert "Nu op de Wissellijst" not in ig.caption(a_out)
 
 
 def test_validatie_en_groeperen():
@@ -63,6 +68,7 @@ def test_ai_achtergrond(monkeypatch):
     asset = ig.maak_asset(_tracks(), 3, DATUM, "IN")
     prompt = ig.ai_prompt(asset)
     assert "Do not render any text" in prompt and "discman" not in prompt
+    assert "highlighted-track information" not in prompt   # geen aparte kolom meer
     assert "Main audio device: modern over-ear headphones" in prompt   # 3%5 = 10s, 3%2 = variant B
 
     monkeypatch.setattr(ig, "INSTAGRAM_AI_ILLUSTRATIE", False)

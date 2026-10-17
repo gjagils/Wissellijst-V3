@@ -171,13 +171,19 @@ def artiest_regel(t):
     return f"{t['artist']} · {t['year']}" if t.get("year") else t["artist"]
 
 
+def sticker_tekst(asset):
+    """Label bij het uitgelichte nummer: erin = 'nu op', eruit = 'helaas van'."""
+    return "NU OP DE WISSELLIJST" if asset["direction"] == "IN" else "HELAAS VAN DE WISSELLIJST"
+
+
 def caption(asset):
     h = uitgelicht(asset)
     richting = "IN" if asset["direction"] == "IN" else "OUT"
     regels = [f"🔄 Wissellijst — rotatie #{asset['rotation_number']}", "", f"5 {richting}.", ""]
     regels += [f"{CAPTION_EMOJI[t['decade']]} {label(t['decade'])} — {t['title']} · {t['artist']}{_jaar(t)}"
                for t in asset["tracks"]]
-    regels += ["", "▶ Nu op de Wissellijst:", f"{h['title']} — {h['artist']}{_jaar(h)}", "",
+    kop = "▶ Nu op de Wissellijst:" if asset["direction"] == "IN" else "💔 Helaas van de Wissellijst:"
+    regels += ["", kop, f"{h['title']} — {h['artist']}{_jaar(h)}", "",
                "#Wissellijst #DoorDeTijdHeen"]
     return "\n".join(regels)
 
@@ -207,10 +213,10 @@ def ai_prompt(asset):
         "halftone dots, paper grain, radial sunburst, small music notes, sparks and arrows, "
         "yellow/turquoise/orange base palette, decade accent color "
         f"{DECADE_KLEUR_NAAM[asset['highlight_decade']]}.\n\n"
-        "The main audio device is the hero object, placed on the right half, slightly above center.\n"
+        "The main audio device is the hero object, centered in the right half.\n"
         "Leave clean, calm negative space for a five-track list on the left half, "
         "branding at the top, rotation metadata at top right, "
-        "and highlighted-track information below the hero object.\n\n"
+        "and a banner along the bottom.\n\n"
         "Do not render any text, letters, numbers, song titles, artist names, dates, decade labels "
         "or logos. No picture frame or border. No photorealism. No glossy 3D. No random typography."
     )
@@ -250,7 +256,7 @@ def getekende_achtergrond(asset):
     img = Image.new("RGB", (FORMAAT, FORMAAT), BRAND["turquoise"])
     draw = ImageDraw.Draw(img)
 
-    cx, cy = 800, 470
+    cx, cy = 800, 568
     stralen = 28
     for i in range(stralen):
         a1, a2 = 2 * math.pi * i / stralen, 2 * math.pi * (i + 0.5) / stralen
@@ -392,7 +398,7 @@ def render(asset, achtergrond=None, hoezen=None):
 
     # Hoofdbeeld zonder AI: de albumhoes van het uitgelichte nummer in een medaillon
     if not ai:
-        cx, cy, r = 800, 470, 190
+        cx, cy, r = 800, 568, 190
         draw.ellipse((cx - r - 16, cy - r - 16, cx + r + 16, cy + r + 16), fill=DECADE_KLEUR[h["decade"]],
                      outline=ink, width=8)
         hoes = _hoes(h.get("artwork_url"), 2 * r) or _hoes_placeholder(2 * r, DECADE_KLEUR[h["decade"]])
@@ -420,43 +426,41 @@ def render(asset, achtergrond=None, hoezen=None):
     # Vijf trackregels, altijd 80s -> 20s
     x0, x1, y, hoogte, tussen = 66, 560, 238, 116, 16
     badge_f, titel_f, artiest_f = _logo_font(34), _bold_font(31), _medium_font(25)
+    h_y = y
     for t in asset["tracks"]:
         is_h = t["highlighted"]
-        _kaart(draw, (x0, y, x1, y + hoogte), yellow if is_h else cream, rand=6 if is_h else 4)
+        # De uitgelichte kaart is hoger: bovenin zit de sticker, daaronder de gewone inhoud.
+        extra = 24 if is_h else 0
+        if is_h:
+            h_y = y
+        _kaart(draw, (x0, y, x1, y + hoogte + extra), yellow if is_h else cream, rand=6 if is_h else 4)
+        yc = y + extra
         kleur = DECADE_KLEUR[t["decade"]]
-        draw.rounded_rectangle((x0 + 16, y + 30, x0 + 112, y + 86), 14, fill=kleur, outline=ink, width=4)
-        draw.text((x0 + 64, y + 59), label(t["decade"]), font=badge_f, fill="#FFFFFF", anchor="mm",
+        draw.rounded_rectangle((x0 + 16, yc + 30, x0 + 112, yc + 86), 14, fill=kleur, outline=ink, width=4)
+        draw.text((x0 + 64, yc + 59), label(t["decade"]), font=badge_f, fill="#FFFFFF", anchor="mm",
                   stroke_width=2, stroke_fill=ink)
         hoes = _hoes(t.get("artwork_url"), 76) or _hoes_placeholder(76, kleur)
-        _plak_rond(img, hoes, (x0 + 126, y + 20))
-        draw.rounded_rectangle((x0 + 126, y + 20, x0 + 202, y + 96), 10, outline=ink, width=3)
+        _plak_rond(img, hoes, (x0 + 126, yc + 20))
+        draw.rounded_rectangle((x0 + 126, yc + 20, x0 + 202, yc + 96), 10, outline=ink, width=3)
         tx = x0 + 218
-        rechts = x1 - (54 if is_h else 18)
-        draw.text((tx, y + 40), _past(draw, t["title"], titel_f, rechts - tx), font=titel_f, fill=ink, anchor="lm")
-        draw.text((tx, y + 78), _past(draw, artiest_regel(t), artiest_f, rechts - tx), font=artiest_f,
+        rechts = x1 - 18
+        draw.text((tx, yc + 40), _past(draw, t["title"], titel_f, rechts - tx), font=titel_f, fill=ink, anchor="lm")
+        draw.text((tx, yc + 78), _past(draw, artiest_regel(t), artiest_f, rechts - tx), font=artiest_f,
                   fill="#3A3F45", anchor="lm")
-        if is_h:  # play-teken
-            draw.polygon([(x1 - 42, y + 40), (x1 - 42, y + 76), (x1 - 14, y + 58)], fill=BRAND["redShadow"],
-                         outline=ink, width=3)
-        y += hoogte + tussen
+        y += hoogte + extra + tussen
 
-    # NU OP DE WISSELLIJST
-    sticker = Image.new("RGBA", (420, 72), (0, 0, 0, 0))
+    # Sticker op de rand van de uitgelichte kaart: NU OP / HELAAS VAN DE WISSELLIJST
+    label_f = _marker_font(22)
+    sticker_label = sticker_tekst(asset)
+    breedte = int(draw.textlength(sticker_label, font=label_f)) + 36
+    sticker = Image.new("RGBA", (breedte + 8, 52), (0, 0, 0, 0))
     sd = ImageDraw.Draw(sticker)
-    sd.rounded_rectangle((4, 4, 414, 66), 14, fill=yellow, outline=ink, width=5)
-    sd.text((209, 36), "NU OP DE WISSELLIJST", font=_marker_font(30), fill=ink, anchor="mm")
-    sticker = sticker.rotate(4, expand=True, resample=Image.BICUBIC)
-    img.paste(sticker, (588, 680), sticker)
+    sd.rounded_rectangle((4, 4, breedte + 3, 47), 12, fill=yellow if is_in else BRAND["orange"],
+                         outline=ink, width=4)
+    sd.text(((breedte + 8) / 2, 26), sticker_label, font=label_f, fill=ink, anchor="mm")
+    sticker = sticker.rotate(2, expand=True, resample=Image.BICUBIC)
+    img.paste(sticker, (x1 + 22 - sticker.width, h_y - 24), sticker)
     draw = ImageDraw.Draw(img)
-    _kaart(draw, (600, 762, 1014, 900), cream)
-    hf = _bold_font(32)
-    regels = _regels(draw, h["title"], hf, 374, max_regels=2)
-    ty = 794 if len(regels) == 1 else 784
-    for regel in regels:
-        draw.text((620, ty), regel, font=hf, fill=ink, anchor="lm")
-        ty += 36
-    draw.text((620, ty + 4), _past(draw, artiest_regel(h), _medium_font(26), 374), font=_medium_font(26),
-              fill="#3A3F45", anchor="lm")
 
     # 5 IN / 5 OUT
     banner_kleur = "#2E9E6A" if is_in else BRAND["redShadow"]
