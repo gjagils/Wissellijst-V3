@@ -111,6 +111,7 @@ def _run_met_wijzigingen(wl_id):
 
 
 def test_maak_voor_run_en_routes(client, wissellijst, monkeypatch):
+    monkeypatch.setattr(ig, "INSTAGRAM_RICHTINGEN", ("IN", "OUT"))
     monkeypatch.setattr(ig, "INSTAGRAM_AI_ILLUSTRATIE", False)
     monkeypatch.setattr(ig, "_hoes_urls", lambda uris: {})
     run_id = _run_met_wijzigingen(wissellijst["id"])
@@ -161,6 +162,7 @@ def test_rotatie_start_plaatjes_alleen_als_aan(client, wissellijst, monkeypatch)
 
 def test_geen_plaatje_geeft_reden(wissellijst, monkeypatch):
     import pytest
+    monkeypatch.setattr(ig, "INSTAGRAM_RICHTINGEN", ("IN", "OUT"))
     monkeypatch.setattr(ig, "_hoes_urls", lambda uris: {})
     with get_session() as s:
         run = RotatieRun(wissellijst_id=wissellijst["id"], status="voltooid",
@@ -174,3 +176,12 @@ def test_geen_plaatje_geeft_reden(wissellijst, monkeypatch):
         ig.maak_voor_run(run_id)
     assert "IN: geen nummers met een decennium" in str(e.value)
     assert "OUT: 1 tracks in plaats van 5" in str(e.value)
+
+
+def test_standaard_alleen_in(wissellijst, monkeypatch):
+    """Alleen het IN-plaatje wordt gepost; OUT wordt standaard niet meer gemaakt."""
+    assert ig.INSTAGRAM_RICHTINGEN == ("IN",)
+    monkeypatch.setattr(ig, "_hoes_urls", lambda uris: {})
+    run_id = _run_met_wijzigingen(wissellijst["id"])
+    assert ig.maak_voor_run(run_id) == 1
+    assert [p["richting"] for p in ig.plaatjes_voor_run(run_id)] == ["in"]

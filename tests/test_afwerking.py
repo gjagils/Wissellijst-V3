@@ -118,6 +118,7 @@ def test_openai_aanroepen(monkeypatch):
 
 
 def test_maak_voor_run_bewaart_beide_varianten(client, wissellijst, monkeypatch):
+    monkeypatch.setattr(ig, "INSTAGRAM_RICHTINGEN", ("IN", "OUT"))
     monkeypatch.setattr(ig, "_hoes_urls", lambda uris: {})
     monkeypatch.setattr(ig, "afgewerkt_plaatje",
                         lambda asset, strak: (b"AI-" + asset["direction"].encode(), "AI-afwerking goedgekeurd (poging 1)")
@@ -153,3 +154,18 @@ def test_leestekens_tellen_niet_mee():
     # spelling telt wel
     gelezen["tracks"][4]["artiest_regel"] = "Tegan d Sara - 2012"
     assert len(ig.vergelijk_tekst(asset, gelezen)) == 1
+
+
+def test_leeg_antwoord_van_controle(monkeypatch):
+    """In productie gaf het controlemodel een keer content=None terug (weigering)."""
+    import openai
+
+    class Weigert(FakeOpenAI):
+        def create(self, **kw):
+            bericht = type("M", (), {"content": None, "refusal": "I can't help with that."})()
+            return type("R", (), {"choices": [type("C", (), {"message": bericht})()]})()
+
+    monkeypatch.setattr(openai, "OpenAI", Weigert)
+    import pytest
+    with pytest.raises(ValueError, match="geen antwoord: I can't help"):
+        ig.controleer_tekst(_asset(), _png())

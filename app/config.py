@@ -24,6 +24,9 @@ OPENAI_IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")      # low, m
 INSTAGRAM_AI_ILLUSTRATIE = os.getenv("INSTAGRAM_AI_ILLUSTRATIE", "1") == "1"
 # AI-afwerking: het strakke plaatje opnieuw laten tekenen in handgetekende posterstijl.
 # Een tweede model leest de tekst terug; klopt die niet, dan blijft het strakke plaatje.
+# Welke plaatjes per rotatie: IN (wat erin komt) en/of OUT (wat eruit gaat)
+INSTAGRAM_RICHTINGEN = tuple(r.strip().upper() for r in os.getenv("INSTAGRAM_RICHTINGEN", "IN").split(",")
+                             if r.strip().upper() in ("IN", "OUT"))
 INSTAGRAM_AI_AFWERKING = os.getenv("INSTAGRAM_AI_AFWERKING", "1") == "1"
 INSTAGRAM_AFWERKING_QUALITY = os.getenv("INSTAGRAM_AFWERKING_QUALITY", "high")  # low, medium, high
 INSTAGRAM_AFWERKING_POGINGEN = int(os.getenv("INSTAGRAM_AFWERKING_POGINGEN", "2"))
